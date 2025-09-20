@@ -1,0 +1,63 @@
+// routes/auth.js
+import express from "express"
+import {
+  register,
+  login,
+  googleAuth,
+  getMe,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  sendEmailVerification,
+  verifyEmail,
+  logout,
+  refreshToken,
+  adminLogin,
+  initializeAdmin,
+}  from "../controllers/authController.js"
+
+import  {
+  validateUserRegistration,
+  validateUserLogin,
+  validateEmail,
+  validatePasswordChange,
+} from "../middleware/validationMiddleWare.js"
+
+import { authMiddleware }  from "../middleware/authMiddleware.js";
+import  {
+  registerLimiter,
+  authLimiter,
+  passwordResetLimiter,
+} from "../middleware/rateLimitMiddleWare.js"
+import verifyJwt from "../middleware/verifyJwtMiddleWare.js";
+
+const router = express.Router();
+
+// Public routes
+router.post("/register", registerLimiter, register);
+router.post("/login", authLimiter, validateUserLogin, login);
+router.post("/google", authLimiter, googleAuth);
+router.post(
+  "/forgot-password",
+  passwordResetLimiter,
+  validateEmail,
+  forgotPassword
+);
+router.post("/reset-password/:token", passwordResetLimiter, resetPassword);
+router.get("/verify-email/:token", verifyEmail);
+
+// Admin routes
+router.post("/admin/login", authLimiter, validateUserLogin, adminLogin);
+// router.post("/admin/initialize", initializeAdmin); // Remove this in production
+
+// Protected routes
+router.use(authMiddleware); // All routes below require authentication
+
+router.get("/me", getMe);
+
+router.post("/change-password", validatePasswordChange, changePassword);
+router.post("/verify-email", sendEmailVerification);
+router.post("/logout", logout);
+router.post("/refresh-token", refreshToken);
+
+export default router;
