@@ -4,6 +4,7 @@ import  {User}  from "../models/UserModel.js"
 import  { AppError }  from "../middleware/errorHandler.js"
 import asyncHandler from "../utils/asyncHandler.js"
 import apiError from "../utils/apiError.js";
+import apiResponse from "../utils/apiResponse.js";
 // @desc    Get user's notifications with pagination and filtering
 // @route   GET /api/notifications
 // @access  Private
@@ -56,8 +57,7 @@ const getNotifications = asyncHandler(async (req, res, next) => {
       read: totalCount - unreadCount,
     };
 
-    res.status(200).json({
-      success: true,
+    const data={
       notifications,
       summary,
       pagination: {
@@ -66,7 +66,8 @@ const getNotifications = asyncHandler(async (req, res, next) => {
         totalPages: Math.ceil(totalCount / parseInt(limit)),
         hasMore: skip + notifications.length < totalCount,
       },
-    });
+    }
+    res.status(200).json(new apiResponse(200,true,data,"notifications fetched successfully"));
 });
 
 // @desc    Get notification statistics
@@ -110,16 +111,14 @@ const getNotificationStats = asyncHandler(async (req, res, next) => {
         }
       });
     }
-
-    res.status(200).json({
-      success: true,
-      stats: {
+    const statsData= {
         total: summary.total,
         unread: summary.unread,
         read: summary.total - summary.unread,
         typeBreakdown,
-      },
-    });
+      }
+
+    res.status(200).json(new apiResponse(200, true,statsData, "notification stats fetched successfully"));
   });
 // @desc    Create a new notification
 // @route   POST /api/notifications
@@ -162,12 +161,7 @@ const createNotification = asyncHandler(async (req, res, next) => {
 
     await notification.save();
 
-    res.status(201).json({
-      success: true,
-      message: "Notification created successfully",
-      notification,
-    });
-  
+    res.status(201).json(new apiResponse(201,true,notification,"Notification created successfully"));
 });
 
 // @desc    Mark specific notification as read
@@ -187,11 +181,7 @@ const markAsRead = asyncHandler(async (req, res, next) => {
       throw new apiError("Notification not found", 404);
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Notification marked as read",
-      notification,
-    });
+    res.status(200).json(new apiResponse(200,true,notification,"Notification marked as read"))
 });
 
 // @desc    Mark all notifications as read
@@ -204,13 +194,8 @@ const markAllAsRead = asyncHandler(async (req, res, next) => {
       { user: userId, read: false },
       { read: true, readAt: new Date() }
     );
-
-    res.status(200).json({
-      success: true,
-      message: `Marked ${result.modifiedCount} notifications as read`,
-      updatedCount: result.modifiedCount,
-    });
- 
+const updatedCount=result.modifiedCount
+    res.status(200).json(new apiResponse(200,true,updatedCount, `Marked ${result.modifiedCount} notifications as read`));
 });
 
 // @desc    Delete specific notification
@@ -229,10 +214,7 @@ const deleteNotification = asyncHandler(async (req, res, next) => {
       throw new apiError("Notification not found", 404)
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Notification deleted successfully",
-    });
+    res.status(200).json(new apiResponse(200,true,{}, "Notification deleted successfully"));
 });
 
 // @desc    Delete notifications based on query params
@@ -253,19 +235,12 @@ const deleteAllNotifications = asyncHandler(async (req, res, next) => {
       filter.read = true;
       message = "read notifications";
     } else {
-      return res.status(400).json({
-        success: false,
-        error: "Either deleteAll or deleteRead parameter is required",
-      });
+     throw new apiError("Specify deleteAll=true to delete all or deleteRead=true to delete read notifications", 400);
     }
 
     const result = await Notification.deleteMany(filter);
 
-    res.status(200).json({
-      success: true,
-      message: `Deleted ${result.deletedCount} ${message}`,
-      deletedCount: result.deletedCount,
-    });
+    res.status(200).json(new apiResponse(200,true,result.deletedCount, `Deleted ${result.deletedCount} ${message}`));
 });
 
 // @desc    Delete all read notifications
@@ -279,12 +254,7 @@ const deleteReadNotifications = asyncHandler(async (req, res, next) => {
       read: true,
     });
 
-    res.status(200).json({
-      success: true,
-      message: `Deleted ${result.deletedCount} read notifications`,
-      deletedCount: result.deletedCount,
-    });
-  
+    res.status(200).json(new apiResponse(200,true,result.deletedCount,`Deleted ${result.deletedCount} read notifications`));
 });
 
 export {

@@ -64,11 +64,7 @@ const submitProject = asyncHandler(async (req, res, next) => {
     { path: "gig", select: "title budget category" },
   ]);
 
-  res.status(201).json({
-    success: true,
-    message: "Project submitted successfully",
-    project,
-  });
+  res.status(201).json(new apiResponse(201, true, project, "Project submitted successfully"));
 });
 
 // @desc    Get projects (filtered by user role)
@@ -104,8 +100,7 @@ const getProjects = asyncHandler(async (req, res, next) => {
 
   const totalProjects = await Project.countDocuments(filterQuery);
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     projects,
     pagination: {
       currentPage: parseInt(page),
@@ -114,7 +109,7 @@ const getProjects = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalProjects / limit),
       hasPrev: page > 1,
     },
-  });
+  }, "Projects fetched successfully"));
 });
 
 // @desc    Update project status
@@ -149,11 +144,7 @@ const updateProjectStatus = asyncHandler(async (req, res, next) => {
     { path: "company", select: "name image profile.companyName" },
   ]);
 
-  res.status(200).json({
-    success: true,
-    message: `Project status updated to ${status}`,
-    project,
-  });
+  res.status(200).json(new apiResponse(200, true, project, "Project status updated successfully"));
 });
 
 export  {

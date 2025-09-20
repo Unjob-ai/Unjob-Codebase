@@ -1,5 +1,5 @@
 // middleware/errorHandler.js
-
+import apiError from "../utils/apiError.js";
 // Custom error class
 class AppError extends Error {
   constructor(message, statusCode, isOperational = true) {

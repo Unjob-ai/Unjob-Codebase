@@ -50,7 +50,7 @@ const getConversations = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalConversations / limit),
       hasPrev: page > 1,
     },
-  }));
+  }, "conversations fetched successfully"));
 });
 
 // @desc    Create or get conversation
@@ -84,11 +84,10 @@ const createConversation = asyncHandler(async (req, res, next) => {
       "participants",
       "name image role profile.companyName"
     );
-    return res.status(200).json({
-      success: true,
+    return res.status(200).json(new apiResponse(200,true,{
       conversation: existingConversation,
       isNew: false,
-    });
+    },"existing conversation fetched successfully"));
   }
 
   // Create new conversation
@@ -112,11 +111,10 @@ const createConversation = asyncHandler(async (req, res, next) => {
     "name image role profile.companyName"
   );
 
-  res.status(201).json({
-    success: true,
+  res.status(201).json(new apiResponse(201,true,{
     conversation,
     isNew: true,
-  });
+  },"conversation created successfully"));
 });
 
 // @desc    Get conversation by ID
@@ -139,13 +137,12 @@ const getConversationById = asyncHandler(async (req, res, next) => {
     req.user._id
   );
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200,true,{
     conversation: {
       ...conversation.toObject(),
       unreadCount,
     },
-  });
+  },"conversation fetched successfully"));
 });
 
 export  {

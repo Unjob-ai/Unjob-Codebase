@@ -4,6 +4,7 @@ import {User} from "../models/UserModel.js"
 import { AppError, catchAsync }  from "../middleware/errorHandler.js"
 import asyncHandler from "../utils/asyncHandler.js"
 import apiError from "../utils/apiError.js";
+import apiResponse from "../utils/apiResponse.js";
 // @desc    Create a new post
 // @route   POST /api/posts
 // @access  Private
@@ -55,11 +56,7 @@ const createPost = asyncHandler(async (req, res, next) => {
   // Populate author info
   await post.populate("author", "name image role");
 
-  res.status(201).json({
-    success: true,
-    message: "Post created successfully",
-    post,
-  });
+  res.status(201).json(new apiResponse(201, true, post, "Post created successfully"));
 });
 
 // @desc    Get all posts with pagination and filters
@@ -112,8 +109,7 @@ const getAllPosts = asyncHandler(async (req, res, next) => {
     return postObj;
   });
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     posts: postsWithInteractions,
     pagination: {
       currentPage: parseInt(page),
@@ -122,7 +118,7 @@ const getAllPosts = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalPosts / limit),
       hasPrev: page > 1,
     },
-  });
+  }, "Posts fetched successfully"));
 });
 
 // @desc    Get post by ID
@@ -145,14 +141,11 @@ const getPostById = asyncHandler(async (req, res, next) => {
   const isLiked = post.likes.some(
     (like) => like.user._id.toString() === req.user._id.toString()
   );
-
-  res.status(200).json({
-    success: true,
-    post: {
+const data= {
       ...post.toObject(),
-      isLiked,
-    },
-  });
+      isLiked
+    }
+  res.status(200).json(new apiResponse(200, true, data, "Post fetched successfully"));
 });
 
 // @desc    Update post
@@ -208,11 +201,7 @@ const updatePost = asyncHandler(async (req, res, next) => {
 
   await post.populate("author", "name image role");
 
-  res.status(200).json({
-    success: true,
-    message: "Post updated successfully",
-    post,
-  });
+  res.status(200).json(new apiResponse(200, true, post, "Post updated successfully"));
 });
 
 // @desc    Delete post
@@ -238,10 +227,7 @@ const deletePost = asyncHandler(async (req, res, next) => {
     $inc: { "stats.postsCount": -1 },
   }, { new: true, strict: false });
 
-  res.status(200).json({
-    success: true,
-    message: "Post deleted successfully",
-  });
+  res.status(200).json(new apiResponse(200, true, {}, "Post deleted successfully"));
 });
 
 
@@ -272,12 +258,11 @@ const toggleLike = asyncHandler(async (req, res, next) => {
     message = "Post liked successfully";
   }
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     message,
     likesCount: post.likesCount,
     isLiked: !existingLike,
-  });
+  }, "Post liked/unliked successfully"));
 });
 
 // @desc    Add comment to post
@@ -303,12 +288,10 @@ const addComment = asyncHandler(async (req, res, next) => {
 
   const newComment = post.comments[post.comments.length - 1];
 
-  res.status(201).json({
-    success: true,
-    message: "Comment added successfully",
+  res.status(201).json(new apiResponse(201, true, {
     comment: newComment,
-    commentsCount: post.commentsCount,
-  });
+    commentsCount: post.commentsCount
+  }, "Comment added successfully"));
 });
 
 // @desc    Delete comment
@@ -349,10 +332,7 @@ const deleteComment = asyncHandler(async (req, res, next) => {
 
   await post.save();
 
-  res.status(200).json({
-    success: true,
-    message: "Comment deleted successfully",
-  });
+  res.status(200).json(new apiResponse(200, true, {}, "Comment deleted successfully"));
 });
 
 
@@ -391,8 +371,7 @@ const getUserPosts = asyncHandler(async (req, res, next) => {
     return postObj;
   });
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     posts: postsWithInteractions,
     pagination: {
       currentPage: parseInt(page),
@@ -400,8 +379,7 @@ const getUserPosts = asyncHandler(async (req, res, next) => {
       totalPosts,
       hasNext: page < Math.ceil(totalPosts / limit),
       hasPrev: page > 1,
-    },
-  });
+    }}, "User posts fetched successfully"))
 });
 
 // @desc    Get portfolio posts
@@ -429,8 +407,7 @@ const getPortfolioPosts = asyncHandler(async (req, res, next) => {
 
   const totalPosts = await Post.countDocuments(filterQuery);
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     portfolioPosts: posts,
     pagination: {
       currentPage: parseInt(page),
@@ -439,7 +416,7 @@ const getPortfolioPosts = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalPosts / limit),
       hasPrev: page > 1,
     },
-  });
+  }, "Portfolio posts fetched successfully") );
 });
 
 // @desc    Search posts
@@ -487,8 +464,7 @@ const searchPosts = asyncHandler(async (req, res, next) => {
     return postObj;
   });
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     posts: postsWithInteractions,
     searchQuery: q,
     pagination: {
@@ -498,7 +474,7 @@ const searchPosts = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalPosts / limit),
       hasPrev: page > 1,
     },
-  });
+  }, "Search results fetched successfully"));
 });
 
 // @desc    Get trending posts
@@ -549,8 +525,7 @@ const getTrendingPosts = asyncHandler(async (req, res, next) => {
     return postObj;
   });
 
-  res.status(200).json({
-    success: true,
+  res.status(200).json(new apiResponse(200, true, {
     posts: postsWithInteractions,
     timeframe,
     pagination: {
@@ -560,7 +535,7 @@ const getTrendingPosts = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalPosts / limit),
       hasPrev: page > 1,
     },
-  });
+  }, "Trending posts fetched successfully"));
 });
 
 export {

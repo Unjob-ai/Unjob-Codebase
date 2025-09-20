@@ -1,14 +1,15 @@
 // controllers/paymentController.js
-import  {Payment} from "../models/PaymentModel.js"
-import  {User} from "../models/UserModel.js"
-import  {Gig}  from "../models/GigModel.js"
-import  {Project} from "../models/ProjectModel.js"
-import  {Subscription} from "../models/SubscriptionModel.js"
-import  {Wallet} from "../models/WalletModel.js"
-import  { AppError, catchAsync } from "../middleware/errorHandler.js"
-import  crypto from "crypto"
-import asyncHandler from "../utils/asyncHandler.js"
+import { Payment } from "../models/PaymentModel.js";
+import { User } from "../models/UserModel.js";
+import { Gig } from "../models/GigModel.js";
+import { Project } from "../models/ProjectModel.js";
+import { Subscription } from "../models/SubscriptionModel.js";
+import { Wallet } from "../models/WalletModel.js";
+import { AppError, catchAsync } from "../middleware/errorHandler.js";
+import crypto from "crypto";
+import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
+import apiResponse from "../utils/apiResponse.js";
 // Mock Razorpay - replace with actual Razorpay integration
 const mockRazorpay = {
   orders: {
@@ -39,7 +40,7 @@ const createPaymentOrder = asyncHandler(async (req, res, next) => {
     req.body;
 
   if (!amount || amount <= 0) {
-     throw new apiError("Valid amount is required", 400);
+    throw new apiError("Valid amount is required", 400);
   }
 
   if (
@@ -84,7 +85,10 @@ const createPaymentOrder = asyncHandler(async (req, res, next) => {
 
     case "milestone_payment":
       if (!projectId) {
-        throw new apiError("Project ID is required for milestone payments", 400);
+        throw new apiError(
+          "Project ID is required for milestone payments",
+          400
+        );
       }
 
       const project = await Project.findById(projectId).populate(
@@ -99,7 +103,10 @@ const createPaymentOrder = asyncHandler(async (req, res, next) => {
 
       // Verify user is the company owner
       if (project.company._id.toString() !== req.user._id.toString()) {
-        throw new apiError("Not authorized to make payment for this project", 403);
+        throw new apiError(
+          "Not authorized to make payment for this project",
+          403
+        );
       }
       break;
 
@@ -136,13 +143,15 @@ const createPaymentOrder = asyncHandler(async (req, res, next) => {
   };
 
   const payment = await Payment.create(paymentData);
-
-  res.status(201).json({
-    success: true,
-    message: "Payment order created successfully",
-    payment,
-    razorpayOrder,
-  });
+  const data = {
+    payment: payment,
+    razorpayOrder: razorpayOrder,
+  };
+  res
+    .status(201)
+    .json(
+      new apiResponse(201, true, data, "Payment order created successfully")
+    );
 });
 
 // @desc    Verify payment
@@ -214,11 +223,9 @@ const verifyPayment = asyncHandler(async (req, res, next) => {
     { path: "project", select: "title" },
   ]);
 
-  res.status(200).json({
-    success: true,
-    message: "Payment verified successfully",
-    payment,
-  });
+  res
+    .status(200)
+    .json(new apiResponse(200, true, payment, "Payment verified successfully"));
 });
 
 // Handle actions after successful payment
@@ -310,17 +317,23 @@ const getUserPayments = asyncHandler(async (req, res, next) => {
 
   const totalPayments = await Payment.countDocuments(filterQuery);
 
-  res.status(200).json({
-    success: true,
-    payments,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPayments / limit),
-      totalPayments,
-      hasNext: page < Math.ceil(totalPayments / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        payments,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPayments / limit),
+          totalPayments,
+          hasNext: page < Math.ceil(totalPayments / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "Payments fetched successfully"
+    )
+  );
 });
 
 // @desc    Get payment by ID
@@ -348,10 +361,7 @@ const getPaymentById = asyncHandler(async (req, res, next) => {
     throw new apiError("Not authorized to view this payment", 403);
   }
 
-  res.status(200).json({
-    success: true,
-    payment,
-  });
+  res.status(200).json(new apiResponse(200, true, payment, "Payment fetched successfully"));
 });
 
 // @desc    Request refund
@@ -370,7 +380,6 @@ const requestRefund = asyncHandler(async (req, res, next) => {
   if (payment.payer.toString() !== req.user._id.toString()) {
     throw new apiError("Only the payer can request a refund", 403);
   }
-  
 
   // Check if payment can be refunded
   if (payment.status !== "completed") {
@@ -384,8 +393,7 @@ const requestRefund = asyncHandler(async (req, res, next) => {
   const refundAmount = amount || payment.amount;
 
   if (refundAmount > payment.amount) {
-  throw new apiError("Refund amount cannot exceed payment amount", 400)
-    
+    throw new apiError("Refund amount cannot exceed payment amount", 400);
   }
 
   // Create refund record
@@ -412,11 +420,7 @@ const requestRefund = asyncHandler(async (req, res, next) => {
 
   await payment.save();
 
-  res.status(200).json({
-    success: true,
-    message: "Refund request submitted successfully",
-    refundPayment,
-  });
+  res.status(200).json(new apiResponse(200, true, refundPayment, "Refund request submitted successfully"));
 });
 
 // @desc    Get payment statistics
@@ -517,10 +521,7 @@ const getPaymentStats = asyncHandler(async (req, res, next) => {
     recentTransactions,
   };
 
-  res.status(200).json({
-    success: true,
-    stats: result,
-  });
+  res.status(200).json(new apiResponse(200, true, result, "Payment statistics fetched successfully"));
 });
 
 // @desc    Update payment status (Admin only)
@@ -528,7 +529,7 @@ const getPaymentStats = asyncHandler(async (req, res, next) => {
 // @access  Private (Admin only)
 const updatePaymentStatus = asyncHandler(async (req, res, next) => {
   if (req.user.role !== "admin") {
-    throw new apiError("Only admins can update payment status", 403)
+    throw new apiError("Only admins can update payment status", 403);
   }
 
   const { status, description } = req.body;
@@ -579,11 +580,7 @@ const updatePaymentStatus = asyncHandler(async (req, res, next) => {
     await handlePostPaymentActions(payment);
   }
 
-  res.status(200).json({
-    success: true,
-    message: `Payment status updated to ${status}`,
-    payment,
-  });
+  res.status(200).json(new apiResponse(200, true, payment, "Payment status updated successfully"));
 });
 
 // @desc    Get payment methods for user
@@ -630,12 +627,11 @@ const getPaymentMethods = asyncHandler(async (req, res, next) => {
     const wallet = await Wallet.findOne({ userId: req.user._id });
     walletBalance = wallet?.balance || 0;
   }
-
-  res.status(200).json({
-    success: true,
-    paymentMethods,
-    walletBalance,
-  });
+const data={
+  paymentMethods,
+  walletBalance,
+}
+  res.status(200).json(new apiResponse(200, true, data, "Payment methods fetched successfully"));
 });
 
 export {

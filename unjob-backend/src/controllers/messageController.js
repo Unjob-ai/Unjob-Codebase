@@ -1,10 +1,11 @@
 // controllers/messageController.js
-import  {Message} from "../models/MessageModel.js"
-import  {Conversation} from "../models/ConversationModel.js"
-import  {User} from "../models/UserModel.js";
-import  { AppError, catchAsync } from "../middleware/errorHandler.js"
-import asyncHandler from "../utils/asyncHandler.js"
+import { Message } from "../models/MessageModel.js";
+import { Conversation } from "../models/ConversationModel.js";
+import { User } from "../models/UserModel.js";
+import { AppError, catchAsync } from "../middleware/errorHandler.js";
+import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
+import apiResponse from "../utils/apiResponse.js";
 // @desc    Send a message
 // @route   POST /api/messages
 // @access  Private
@@ -48,11 +49,9 @@ const sendMessage = asyncHandler(async (req, res, next) => {
   // Populate sender info
   await message.populate("sender", "name image role");
 
-  res.status(201).json({
-    success: true,
-    message: "Message sent successfully",
-    data: message,
-  });
+  res
+    .status(201)
+    .json(new apiResponse(201, true, message, "Message sent successfully"));
 });
 
 // @desc    Get messages for a conversation
@@ -83,16 +82,22 @@ const getMessages = asyncHandler(async (req, res, next) => {
     isDeleted: false,
   });
 
-  res.status(200).json({
-    success: true,
-    messages: messages.reverse(), // Show oldest first
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalMessages / limit),
-      totalMessages,
-      hasMore: messages.length === parseInt(limit),
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        messages: messages.reverse(), // Show oldest first
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalMessages / limit),
+          totalMessages,
+          hasMore: messages.length === parseInt(limit),
+        },
+      },
+      "Messages fetched successfully"
+    )
+  );
 });
 
 // @desc    Mark messages as read
@@ -130,6 +135,7 @@ const markMessagesAsRead = asyncHandler(async (req, res, next) => {
           },
         },
         $set: { status: "read" },
+        modifiedCount: result.modifiedCount,
       }
     );
   } else {
@@ -137,11 +143,15 @@ const markMessagesAsRead = asyncHandler(async (req, res, next) => {
     result = await Message.markAllAsRead(conversationId, req.user._id);
   }
 
-  res.status(200).json({
-    success: true,
-    message: "Messages marked as read",
-    modifiedCount: result.modifiedCount,
-  });
+  const modifiedCount = result.modifiedCount;
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      modifiedCount,
+      "Messages marked as read successfully"
+    )
+  );
 });
 
 // @desc    Delete a message
@@ -163,15 +173,7 @@ const deleteMessage = asyncHandler(async (req, res, next) => {
 
   await message.softDelete(req.user._id);
 
-  res.status(200).json({
-    success: true,
-    message: "Message deleted successfully",
-  });
+  res.status(200).json(new apiResponse(200, true, {}, "Message deleted successfully"));
 });
 
-export{
-  sendMessage,
-  getMessages,
-  markMessagesAsRead,
-  deleteMessage,
-};
+export { sendMessage, getMessages, markMessagesAsRead, deleteMessage };

@@ -1,9 +1,10 @@
 // controllers/gigController.js
-import {Gig} from "../models/GigModel.js"
-import {User} from "../models/UserModel.js" 
-import { AppError, catchAsync }from "../middleware/errorHandler.js"
-import asyncHandler from "../utils/asyncHandler.js"
+import { Gig } from "../models/GigModel.js";
+import { User } from "../models/UserModel.js";
+import { AppError, catchAsync } from "../middleware/errorHandler.js";
+import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
+import apiResponse from "../utils/apiResponse.js";
 // @desc    Create a new gig
 // @route   POST /api/gigs
 // @access  Private (Hiring companies only)
@@ -67,11 +68,9 @@ const createGig = asyncHandler(async (req, res, next) => {
     "name image profile.companyName profile.companySize"
   );
 
-  res.status(201).json({
-    success: true,
-    message: "Gig created successfully",
-    gig,
-  });
+  res
+    .status(201)
+    .json(new apiResponse(201, true, gig, "Gig created successfully"));
 });
 
 // @desc    Get all gigs with filters and pagination
@@ -150,9 +149,7 @@ const getAllGigs = asyncHandler(async (req, res, next) => {
       return gigObj;
     });
   }
-
-  res.status(200).json({
-    success: true,
+  const gigResponse = {
     gigs: gigsWithStatus,
     pagination: {
       currentPage: parseInt(page),
@@ -161,7 +158,10 @@ const getAllGigs = asyncHandler(async (req, res, next) => {
       hasNext: page < Math.ceil(totalGigs / limit),
       hasPrev: page > 1,
     },
-  });
+  };
+  res
+    .status(200)
+    .json(new apiResponse(200, true, gigResponse, "gigs fetched successfully"));
 });
 
 // @desc    Get gig by ID
@@ -208,16 +208,23 @@ const getGigById = asyncHandler(async (req, res, next) => {
       (app) => app.freelancer._id.toString() === req.user._id.toString()
     );
   }
+  const gigResponse = {
+    ...gig.toObject(),
+    applications: applicationsData,
+    hasApplied,
+    applicationStatus,
+  };
 
-  res.status(200).json({
-    success: true,
-    gig: {
-      ...gig.toObject(),
-      applications: applicationsData,
-      hasApplied,
-      applicationStatus,
-    },
-  });
+  res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        true,
+        gigResponse,
+        "conversation fetched successfully"
+      )
+    );
 });
 
 // @desc    Apply to a gig
@@ -264,14 +271,19 @@ const applyToGig = asyncHandler(async (req, res, next) => {
     remainingIterations: totalIterations,
     appliedAt: new Date(),
   };
-
   await gig.addApplication(applicationData);
+  const applicationId = gig.applications[gig.applications.length - 1]._id;
 
-  res.status(201).json({
-    success: true,
-    message: "Application submitted successfully",
-    applicationId: gig.applications[gig.applications.length - 1]._id,
-  });
+  res
+    .status(201)
+    .json(
+      new apiResponse(
+        201,
+        true,
+        applicationId,
+        "Application submitted successfully"
+      )
+    );
 });
 
 // @desc    Get gig applications (for gig owner)
@@ -310,17 +322,23 @@ const getGigApplications = asyncHandler(async (req, res, next) => {
     .sort((a, b) => b.appliedAt - a.appliedAt)
     .slice(skip, skip + parseInt(limit));
 
-  res.status(200).json({
-    success: true,
-    applications: paginatedApplications,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalApplications / limit),
-      totalApplications,
-      hasNext: page < Math.ceil(totalApplications / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        applications: paginatedApplications,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalApplications / limit),
+          totalApplications,
+          hasNext: page < Math.ceil(totalApplications / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "applications fetched successfully"
+    )
+  );
 });
 
 // @desc    Accept/Reject application
@@ -381,11 +399,16 @@ const updateApplicationStatus = asyncHandler(async (req, res, next) => {
   //   relatedModel: 'Gig',
   // });
 
-  res.status(200).json({
-    success: true,
-    message: `Application ${status} successfully`,
-    application,
-  });
+  res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        true,
+        application,
+        `Application ${status} successfully`
+      )
+    );
 });
 
 // @desc    Update gig
@@ -431,11 +454,9 @@ const updateGig = asyncHandler(async (req, res, next) => {
 
   await gig.populate("company", "name image profile.companyName");
 
-  res.status(200).json({
-    success: true,
-    message: "Gig updated successfully",
-    gig,
-  });
+  res
+    .status(200)
+    .json(new apiResponse(200, true, gig, "Gig updated successfully"));
 });
 
 // @desc    Delete gig
@@ -463,10 +484,9 @@ const deleteGig = asyncHandler(async (req, res, next) => {
   gig.isActive = false;
   await gig.save();
 
-  res.status(200).json({
-    success: true,
-    message: "Gig deleted successfully",
-  });
+  res
+    .status(200)
+    .json(new apiResponse(200, true, {}, "Gig deleted successfully"));
 });
 
 // @desc    Search gigs
@@ -532,18 +552,24 @@ const searchGigs = asyncHandler(async (req, res, next) => {
     });
   }
 
-  res.status(200).json({
-    success: true,
-    gigs: gigsWithStatus,
-    searchQuery: q,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalGigs / limit),
-      totalGigs,
-      hasNext: page < Math.ceil(totalGigs / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        gigs: gigsWithStatus,
+        searchQuery: q,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalGigs / limit),
+          totalGigs,
+          hasNext: page < Math.ceil(totalGigs / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "gigs fetched successfully"
+    )
+  );
 });
 
 // @desc    Get company's gigs
@@ -585,17 +611,23 @@ const getCompanyGigs = asyncHandler(async (req, res, next) => {
     ).length,
   }));
 
-  res.status(200).json({
-    success: true,
-    gigs: gigsWithCounts,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalGigs / limit),
-      totalGigs,
-      hasNext: page < Math.ceil(totalGigs / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        gigs: gigsWithCounts,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalGigs / limit),
+          totalGigs,
+          hasNext: page < Math.ceil(totalGigs / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "gigs fetched successfully"
+    )
+  );
 });
 
 // @desc    Get freelancer's applications
@@ -651,17 +683,23 @@ const getMyApplications = asyncHandler(async (req, res, next) => {
 
   const totalApplications = await Gig.countDocuments(matchQuery);
 
-  res.status(200).json({
-    success: true,
-    applications: applicationsWithGigs,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalApplications / limit),
-      totalApplications,
-      hasNext: page < Math.ceil(totalApplications / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        applications: applicationsWithGigs,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalApplications / limit),
+          totalApplications,
+          hasNext: page < Math.ceil(totalApplications / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "applications fetched successfully"
+    )
+  );
 });
 
 // @desc    Get gig categories
@@ -688,10 +726,11 @@ const getGigCategories = asyncHandler(async (req, res, next) => {
     },
   ]);
 
-  res.status(200).json({
-    success: true,
-    categories,
-  });
+  res
+    .status(200)
+    .json(
+      new apiResponse(200, true, categories, "categories fetched successfully")
+    );
 });
 
 // @desc    Get gig statistics
@@ -737,9 +776,7 @@ const getGigStats = asyncHandler(async (req, res, next) => {
       $sort: { count: -1 },
     },
   ]);
-
-  res.status(200).json({
-    success: true,
+  const response = {
     stats: stats[0] || {
       totalGigs: 0,
       avgBudget: 0,
@@ -747,8 +784,12 @@ const getGigStats = asyncHandler(async (req, res, next) => {
       maxBudget: 0,
       totalApplications: 0,
     },
-    categoryStats,
-  });
+    categoryStats: categoryStats,
+  };
+
+  res
+    .status(200)
+    .json(new apiResponse(200, true, response, "stats fetched successfully"));
 });
 
 // @desc    Get featured/recommended gigs
@@ -794,20 +835,26 @@ const getFeaturedGigs = asyncHandler(async (req, res, next) => {
     });
   }
 
-  res.status(200).json({
-    success: true,
-    gigs: gigsWithStatus,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalGigs / limit),
-      totalGigs,
-      hasNext: page < Math.ceil(totalGigs / limit),
-      hasPrev: page > 1,
-    },
-  });
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        gigs: gigsWithStatus,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalGigs / limit),
+          totalGigs,
+          hasNext: page < Math.ceil(totalGigs / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "featured gigs fetched successfully"
+    )
+  );
 });
 
-export  {
+export {
   createGig,
   getAllGigs,
   getGigById,

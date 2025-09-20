@@ -29,7 +29,6 @@ import  {
   authLimiter,
   passwordResetLimiter,
 } from "../middleware/rateLimitMiddleWare.js"
-import verifyJwt from "../middleware/verifyJwtMiddleWare.js";
 
 const router = express.Router();
 
