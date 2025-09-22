@@ -1,5 +1,5 @@
 // middleware/rateLimit.js
-import  rateLimit  from"express-rate-limit" ;
+import rateLimit from "express-rate-limit";
 import apiError from "../utils/apiError.js";
 
 // Simple rate limit configuration without custom keyGenerator to avoid IPv6 issues
@@ -13,12 +13,16 @@ const createRateLimiter = (options = {}) => {
     },
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res,next) => {
-      res.status(429).json(
-        options.message || {
-          error: "Too many requests from this IP, please try again later.",
-        }
-      );
+    handler: (req, res, next) => {
+      res.status(429).json({
+        status: 429,
+        success: "false",
+        message:
+          options.message ||
+          "Too many requests from this IP, please try again later.",
+        errors: null,
+        data: [],
+      });
       // console.log("Rate limit exceeded for IP:", req.ip);
       // next(new apiError("Too many requests from this IP, please try again later.",429));
     },
@@ -142,7 +146,7 @@ const paymentLimiter = createRateLimiter({
   },
 });
 
-export  {
+export {
   // Basic rate limiters
   apiLimiter,
   authLimiter,

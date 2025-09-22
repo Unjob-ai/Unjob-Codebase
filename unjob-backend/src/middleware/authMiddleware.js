@@ -1,162 +1,102 @@
 // middleware/auth.js
-import jwt from "jsonwebtoken"
-import {User}  from "../models/UserModel.js"
+import jwt from "jsonwebtoken";
+import { User } from "../models/UserModel.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import apiError from "../utils/apiError.js";
 
-const authMiddleware = async (req, res, next) => {
-  try {
-    const token = req.header("Authorization")?.replace("Bearer","").trim();
-    console.log("Auth Middleware Token:", token);
-    if (!token) {
-      return res.status(401).json({
-        error: "Access denied. No token provided.",
-      });
-    }
+const authMiddleware = asyncHandler(async (req, res, next) => {
+  const token = req.header("Authorization")?.replace(/^Bearer\s+/i, "").trim();
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Find user by ID from token
-    let user = await User.findById(decoded.userId || decoded.id).select(
-      "-password"
-    );
-
-    if (!user) {
-      return res.status(401).json({
-        error: "Invalid token. User not found.",
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    console.error("Auth middleware error:", error);
-
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
-        error: "Invalid token.",
-      });
-    }
-
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        error: "Token expired.",
-      });
-    }
-
-    res.status(500).json({
-      error: "Authentication error.",
-    });
+  console.log("Auth Middleware Token:", token);
+  if (!token) {
+    throw new apiError("Access denied. No token provided.", 401);
   }
-};
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+  // Find user by ID from token
+  let user = await User.findById(decoded.userId || decoded.id).select(
+    "-password"
+  );
+
+  if (!user) {
+    throw new apiError("Invalid token. User not found.", 401);
+  }
+  req.user = user;
+  next();
+});
 
 // Admin authentication middleware
-const adminAuthMiddleware = async (req, res, next) => {
-  try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+const adminAuthMiddleware = asyncHandler(async (req, res, next) => {
+  const token = req.header("Authorization")?.replace(/^Bearer\s+/i, "").trim();
 
-    if (!token) {
-      return res.status(401).json({
-        error: "Access denied. Admin token required.",
-      });
-    }
-
-    const adminSecret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET + "_admin";
-    const decoded = jwt.verify(token, adminSecret);
-
-    // Check if it's an admin token
-    if (!decoded.isAdmin) {
-      return res.status(401).json({
-        error: "Invalid admin token.",
-      });
-    }
-
-    // Handle default admin
-    if (decoded.adminId === "admin_default") {
-      req.user = {
-        _id: "admin_default",
-        name: "Default Admin",
-        email: "admin@gmail.com",
-        role: "admin",
-        isActive: true
-      };
-      return next();
-    }
-
-    // Find admin user by ID from token
-    let admin = await User.findById(decoded.adminId).select("-password");
-
-    if (!admin || admin.role !== "admin") {
-      return res.status(401).json({
-        error: "Invalid admin token. Admin not found.",
-      });
-    }
-
-    if (!admin.isActive) {
-      return res.status(401).json({
-        error: "Admin account is deactivated.",
-      });
-    }
-
-    req.user = admin;
-    next();
-  } catch (error) {
-    console.error("Admin auth middleware error:", error);
-
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
-        error: "Invalid admin token.",
-      });
-    }
-
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        error: "Admin token expired.",
-      });
-    }
-
-    res.status(500).json({
-      error: "Admin authentication error.",
-    });
+  if (!token) {
+    throw new apiError("Access denied. Admin token required.", 401);
   }
-};
 
-// Middleware to check if user has specific role
+  const adminSecret =
+    process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET + "_admin";
+  const decoded = jwt.verify(token, adminSecret);
+
+  // Check if it's an admin token
+  if (!decoded.isAdmin) {
+    throw new apiError("Invalid admin token.", 401);
+  }
+
+  // Handle default admin
+  if (decoded.adminId === "admin_default") {
+    req.user = {
+      _id: "admin_default",
+      name: "Default Admin",
+      email: "admin@gmail.com",
+      role: "admin",
+      isActive: true,
+    };
+    return next();
+  }
+
+  // Find admin user by ID from token
+  let admin = await User.findById(decoded.adminId).select("-password");
+
+  if (!admin || admin.role !== "admin") {
+    throw new apiError("Invalid admin token. Admin not found.", 401);
+  }
+
+  if (!admin.isActive) {
+    throw new apiError("Admin account is deactivated.", 401);
+  }
+
+  req.user = admin;
+  next();
+});
+
 const requireRole = (roles) => {
-  return (req, res, next) => {
+  return asyncHandler(async (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        error: "Authentication required.",
-      });
+      throw new apiError("Authentication required.", 401);
     }
-
     const userRoles = Array.isArray(roles) ? roles : [roles];
-
     if (!userRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        error: "Access denied. Insufficient permissions.",
-      });
+      throw new apiError("Access denied. Insufficient permissions.", 403);
     }
 
     next();
-  };
+  });
 };
+
 
 // Middleware to check if profile is complete
-const requireCompleteProfile = (req, res, next) => {
+const requireCompleteProfile = asyncHandler(async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required.",
-    });
+    throw new apiError("Authentication required.", 401);
   }
 
   if (!req.user.isProfileComplete()) {
-    return res.status(403).json({
-      error: "Profile completion required.",
-      requiresProfileCompletion: true,
-    });
+    throw new apiError("Profile completion required.", 403);
   }
 
   next();
-};
+})
 
 // Optional auth middleware (doesn't fail if no token)
 const optionalAuth = async (req, res, next) => {
@@ -183,69 +123,52 @@ const optionalAuth = async (req, res, next) => {
 };
 
 // Middleware to check if user is verified
-const requireVerified = (req, res, next) => {
+const requireVerified = asyncHandler(async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required.",
-    });
+    throw new apiError("Authentication required.", 401);
   }
 
   if (!req.user.verified && !req.user.isVerified) {
-    return res.status(403).json({
-      error: "Email verification required.",
-      requiresVerification: true,
-    });
+    throw new apiError("Email verification required.", 403);
   }
 
   next();
-};
+})
+
 
 // Middleware to check if user is active
-const requireActive = (req, res, next) => {
+const requireActive = asyncHandler(async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required.",
-    });
+    throw new apiError("Authentication required.", 401);
   }
 
   if (!req.user.isActive) {
-    return res.status(403).json({
-      error: "Account is deactivated. Please contact support.",
-    });
+    throw new apiError("Account is deactivated. Please contact support.", 403);
   }
 
   next();
-};
+});
 
 // Middleware to check subscription status
-const requireSubscription = (req, res, next) => {
+const requireSubscription = asyncHandler(async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required.",
-    });
+    throw new apiError("Authentication required.", 401);
   }
-
   // Add subscription check logic here if needed
   // For now, we'll just pass through
   next();
-};
+});
 
 // Admin only middleware
-const requireAdmin = (req, res, next) => {
+const requireAdmin = asyncHandler(async (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      error: "Authentication required.",
-    });
+    throw new apiError("Authentication required.", 401);
   }
-
   if (req.user.role !== "admin") {
-    return res.status(403).json({
-      error: "Access denied. Admin privileges required.",
-    });
+    throw new apiError("Access denied. Admin privileges required.", 403);
   }
-
   next();
-};
+});
 
 // Freelancer only middleware
 const requireFreelancer = requireRole("freelancer");
@@ -256,7 +179,7 @@ const requireHiring = requireRole("hiring");
 // Freelancer or hiring middleware
 const requireFreelancerOrHiring = requireRole(["freelancer", "hiring"]);
 
-export  {
+export {
   authMiddleware,
   adminAuthMiddleware,
   requireRole,

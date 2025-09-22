@@ -139,6 +139,7 @@ app.use((req, res) => {
   });
 });
 // Global error handler
-app.use(errorHandler)
-app.use(globalErrorHandler);
+app.use(errorHandler);
+// app.use(globalErrorHandler);
+
 export default app;
