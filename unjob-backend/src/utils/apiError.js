@@ -1,6 +1,6 @@
 //class to standardize api errors
 class apiError extends Error {
-  constructor(message,status ,stack = "", errors = []) {
+  constructor(message,status,errors = [],stack = "",) {
     super(message);
     this.status = status;
     this.message = message;

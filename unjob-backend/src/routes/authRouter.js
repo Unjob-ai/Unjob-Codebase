@@ -33,7 +33,7 @@ import  {
 const router = express.Router();
 
 // Public routes
-router.post("/register", registerLimiter, register);
+router.post("/register", registerLimiter, validateUserRegistration,register);
 router.post("/login", authLimiter, validateUserLogin, login);
 router.post("/google", authLimiter, googleAuth);
 router.post(

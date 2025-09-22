@@ -27,7 +27,7 @@ const CONFIG = {
 };
 
 // Socket.IO setup
- const io = new Server(server, {
+const io = new Server(server, {
   cors: {
     origin: CONFIG.ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
@@ -67,7 +67,7 @@ const shutdown = (signal) => {
   }, 10000);
 };
 // Colors for enhanced logging
- const COLORS = {
+const COLORS = {
   reset: "\x1b[0m",
   bright: "\x1b[1m",
   dim: "\x1b[2m",
@@ -79,7 +79,7 @@ const shutdown = (signal) => {
   cyan: "\x1b[36m",
 };
 // Enhanced logging function
- const log = (level, context, message) => {
+const log = (level, context, message) => {
   const timestamp = new Date().toISOString();
   let levelColor = COLORS.reset;
 

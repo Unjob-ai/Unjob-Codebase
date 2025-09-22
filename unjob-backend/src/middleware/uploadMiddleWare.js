@@ -4,6 +4,8 @@ import path from "path"
 import fs from "fs"
 import  {cloudinary}  from "../config/cloudinaryConfig.js"
 import { AppError } from  "./errorHandler.js"
+import asyncHandler from "../utils/asyncHandler.js";
+import apiError from "../utils/apiError.js";
 
 // Ensure upload directories exist
 const ensureDirectoryExists = (dir) => {
@@ -153,7 +155,7 @@ const uploadConfigs = {
 
 // File validation middleware
 const validateFiles = (allowedTypes = [], maxSize = null) => {
-  return (req, res, next) => {
+  return asyncHandler(async(req, res, next) => {
     if (!req.files && !req.file) {
       return next();
     }
@@ -163,29 +165,27 @@ const validateFiles = (allowedTypes = [], maxSize = null) => {
     for (const file of files) {
       // Check file type
       if (allowedTypes.length > 0 && !allowedTypes.includes(file.mimetype)) {
-        return next(new AppError(`Invalid file type: ${file.mimetype}`, 400));
+        throw new apiError(`Invalid file type: ${file.mimetype}`, 400);
       }
 
       // Check file size
       if (maxSize && file.size > maxSize) {
-        return next(new AppError(`File too large: ${file.originalname}`, 400));
+        throw new apiError(`File too large: ${file.originalname}`, 400);
       }
 
       // Check for malicious files
       if (file.originalname.includes("..") || file.originalname.includes("/")) {
-        return next(
-          new AppError(`Invalid filename: ${file.originalname}`, 400)
-        );
+        throw new apiError("Invalid file name", 400);
       }
     }
 
     next();
-  };
+  });
 };
 
 // Image processing middleware
-const processImages = async (req, res, next) => {
-  try {
+const processImages = asyncHandler(async (req, res, next) => {
+   
     if (!req.files && !req.file) {
       return next();
     }
@@ -211,12 +211,9 @@ const processImages = async (req, res, next) => {
     } else {
       req.file = processedFiles[0];
     }
-
     next();
-  } catch (error) {
-    next(new AppError("Image processing failed", 500));
-  }
-};
+  
+})
 
 // Clean up uploaded files on error
 const cleanupFiles = (files) => {
@@ -232,7 +229,7 @@ const cleanupFiles = (files) => {
 };
 
 // Error handling middleware for file uploads
-const handleUploadError = (err, req, res, next) => {
+const handleUploadError = asyncHandler(async(err, req, res, next) => {
   // Clean up any uploaded files if there's an error
   if (req.files || req.file) {
     cleanupFiles(req.files || req.file);
@@ -241,20 +238,18 @@ const handleUploadError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     switch (err.code) {
       case "LIMIT_FILE_SIZE":
-        return next(new AppError("File too large", 400));
+        throw new apiError("File too large", 400)
       case "LIMIT_FILE_COUNT":
-        return next(new AppError("Too many files uploaded", 400));
+        throw new apiError("Too many files uploaded", 400)
       case "LIMIT_UNEXPECTED_FILE":
-        return next(new AppError("Unexpected file field", 400));
+        throw new apiError("Unexpected file field", 400)
       case "LIMIT_PART_COUNT":
-        return next(new AppError("Too many parts in upload", 400));
+       throw new apiError("Too many parts in upload", 400)
       default:
-        return next(new AppError("File upload error", 400));
+        throw new apiError("File upload error", 400)
     }
   }
-
-  next(err);
-};
+})
 
 // Generate file URL helper
 const generateFileUrl = (file, req) => {
@@ -280,7 +275,7 @@ const extractFileMetadata = (file) => {
 };
 
 // Upload to cloud storage helper
-const uploadToCloud = async (file, folder = "misc") => {
+const uploadToCloud = asyncHandler(async (file, folder = "misc") => {
   try {
     const result = await cloudinary.uploader.upload(file.path, {
       folder: `unjob/${folder}`,
@@ -302,13 +297,13 @@ const uploadToCloud = async (file, folder = "misc") => {
       format: result.format,
     };
   } catch (error) {
-    throw new AppError("Cloud upload failed", 500);
+    throw new apiError("Cloud upload failed", 500);
   }
-};
+})
 
 // Middleware to upload files to cloud after local upload
 const uploadToCloudMiddleware = (folder = "misc") => {
-  return async (req, res, next) => {
+  return asyncHandler(async (req, res, next) => {
     try {
       if (!req.files && !req.file) {
         return next();
@@ -327,13 +322,11 @@ const uploadToCloudMiddleware = (folder = "misc") => {
       } else {
         req.cloudFile = cloudFiles[0];
       }
-
       next();
     } catch (error) {
-      next(error);
-    }
-  };
-};
+throw new apiError("Cloud upload error", 500) }
+  })
+}
 
 export {
   uploadConfigs,

@@ -1,18 +1,22 @@
 // middleware/validation.js
 import { body, param, query, validationResult } from "express-validator";
       import  isMongoId  from "validator"
+import asyncHandler from "../utils/asyncHandler.js";
+import apiError from "../utils/apiError.js";
 
 // Handle validation results
-const handleValidationErrors = (req, res, next) => {
+const handleValidationErrors = asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: "Validation Error",
-      details: errors.array(),
-    });
+    // return res.status(400).json({
+    //   error: "Validation Error",
+    //   details: errors.array(),
+    // });
+    console.log("Validation errors:", errors.array());
+    throw new apiError("Validation Error", 400, errors.array());
   }
   next();
-};
+})
 
 // ============= USER VALIDATION =============
 

@@ -3,6 +3,8 @@ import cloudinary from "cloudinary";
 import  multer from "multer";
 import path from "path";
 import fs from "fs";
+import asyncHandler from "../utils/asyncHandler.js";
+import apiError from "../utils/apiError.js";
 
 // Configure Cloudinary
 cloudinary.config({
@@ -144,7 +146,7 @@ const uploadConfigs = {
 };
 
 // Upload to Cloudinary helper function
-const uploadToCloudinary = async (filePath, folder = "misc") => {
+const uploadToCloudinary = asyncHandler(async (filePath, folder = "misc") => {
   try {
     const result = await cloudinary.uploader.upload(filePath, {
       folder: `unjob/${folder}`,
@@ -167,20 +169,20 @@ const uploadToCloudinary = async (filePath, folder = "misc") => {
     };
   } catch (error) {
     console.error("Cloudinary upload error:", error);
-    throw error;
+    throw new apiError("Cloudinary upload error",400)
   }
-};
+})
 
 // Delete from Cloudinary
-const deleteFromCloudinary = async (publicId) => {
+const deleteFromCloudinary = asyncHandler(async (publicId) => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
     return result;
   } catch (error) {
     console.error("Error deleting from Cloudinary:", error);
-    throw error;
+    throw new apiError("Error deleting from Cloudinary:",400);
   }
-};
+})
 
 // Get optimized URL
 const getOptimizedUrl = (publicId, options = {}) => {
