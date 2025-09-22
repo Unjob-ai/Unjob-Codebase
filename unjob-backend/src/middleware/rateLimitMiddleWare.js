@@ -14,13 +14,13 @@ const createRateLimiter = (options = {}) => {
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res,next) => {
-      // res.status(429).json(
-      //   options.message || {
-      //     error: "Too many requests from this IP, please try again later.",
-      //   }
-      // );
-      console.log("Rate limit exceeded for IP:", req.ip);
-      next(new apiError("Too many requests from this IP, please try again later.",429));
+      res.status(429).json(
+        options.message || {
+          error: "Too many requests from this IP, please try again later.",
+        }
+      );
+      // console.log("Rate limit exceeded for IP:", req.ip);
+      // next(new apiError("Too many requests from this IP, please try again later.",429));
     },
     skip: (req) => {
       // Skip rate limiting for certain IPs
