@@ -7,13 +7,15 @@ import { AppError, catchAsync } from "../middleware/errorHandler.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
+import notificationService from "../services/notificationService.js";
+
 // Generate JWT token
 const generateToken = async (userId) => {
-  //create access and refresh token
+  //create access
   const accessToken = jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
-  // return accessToken, refreshToken;
+  // return accessToken;
   return { accessToken };
 };
 
@@ -57,6 +59,7 @@ const sendAdminTokenResponse = (admin, statusCode, res, message) => {
     )
   );
 };
+
 // @desc    Register a new user
 // @route   POST /api/auth/register
 // @access  Public
@@ -68,7 +71,7 @@ const register = asyncHandler(async (req, res) => {
   // Check if user already exists
   const existingUser = await User.findOne({ email: email });
   if (existingUser) {
-    throw new apiError("User already exists with this email address", 400);
+    throw new apiError("User already exists with this email address", 409);
   }
   // Create new user
   const user = await User.create({
@@ -86,26 +89,23 @@ const register = asyncHandler(async (req, res) => {
   }
   await sendTokenResponse(user, 201, res, "User registered successfully");
 });
-
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  console.log("[Auth] Login attempt for:", email);
-
   // Find user by email and include password
   const user = await User.findOne({ email });
   if (!user) {
-    throw new apiError("Invalid email or password", 401);
+    throw new apiError("Invalid email ", 401);
   }
 
   // Check password (skip for Google OAuth users)
   if (user.provider === "email") {
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      throw new apiError("Invalid email or password", 401);
+      throw new apiError("Invalid  password", 401);
     }
   }
 
@@ -113,7 +113,6 @@ const login = asyncHandler(async (req, res) => {
   user.lastLogin = new Date();
   await user.save({ validateBeforeSave: false });
 
-  console.log("[Auth] Login successful for:", user._id);
 
   await sendTokenResponse(user, 200, res, "Login successful");
 });
@@ -123,7 +122,6 @@ const login = asyncHandler(async (req, res) => {
 // @access  Public
 const googleAuth = asyncHandler(async (req, res) => {
   const { name, email, googleId, image, role } = req.body;
-  console.log("[Auth] Google OAuth attempt:", { email, role });
   if (!email || !googleId) {
     throw new apiError("Email and Google ID are required", 400);
   }
@@ -162,7 +160,6 @@ const googleAuth = asyncHandler(async (req, res) => {
     });
   }
 
-  console.log("[Auth] Google OAuth successful for:", user._id);
   await sendTokenResponse(user, 200, res, "Google authentication successful");
 });
 
@@ -201,17 +198,7 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({ email });
   if (!user) {
-    // Don't reveal whether email exists
-    return res
-      .status(200)
-      .json(
-        new apiResponse(
-          200,
-          true,
-          {},
-          "If the email exists, a password reset link has been sent"
-        )
-      );
+   throw new apiError("Invalid Email",401)
   }
 
   // Generate reset token
@@ -225,23 +212,19 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
   await user.save({ validateBeforeSave: false });
 
   const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-
   console.log("[Auth] Password reset requested for:", email);
   console.log("[Auth] Reset URL:", resetUrl);
 
   // TODO: Send email with reset link
-  // await sendEmail({
+  // await notificationService.sendEmail({
   //   to: user.email,
   //   subject: 'Password Reset',
   //   template: 'resetPassword',
   //   data: { name: user.name, resetUrl }
   // });
-
-  res.status(200).json({
-    success: true,
-    message: "Password reset link sent to email",
-    ...(process.env.NODE_ENV === "development" && { resetUrl }),
-  });
+const data=(process.env.NODE_ENV === "development" && { resetUrl })
+  res.status(200).json(new apiResponse(200, true,data , "Password reset link sent to email"));
+        
 });
 
 // @desc    Reset password
@@ -265,7 +248,7 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   });
 
   if (!user) {
-    throw new apiError("Invalid or expired reset token", 400);
+    throw new apiError("Invalid or expired reset token", 401);
   }
 
   // Update password
@@ -324,7 +307,6 @@ const sendEmailVerification = asyncHandler(async (req, res, next) => {
   if (req.user.verified) {
     throw new apiError("Email is already verified", 400);
   }
-
   // Generate verification token
   const verificationToken = crypto.randomBytes(32).toString("hex");
   req.user.verificationToken = verificationToken;
@@ -387,7 +369,6 @@ const logout = asyncHandler(async (req, res) => {
 // @access  Private
 const refreshToken = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
-
   if (!user) {
     throw new apiError("User not found", 404);
   }

@@ -20,7 +20,6 @@ handleUnhandledRejection();
 import apiRoutes from "./routes/index.js";
 import errorHandler from "./middleware/errorHandlerMiddleware.js";
 import { cookie } from "express-validator";
-import cookieParser from "cookie-parser";
 dotenv.config();
 const app = express();
 const CONFIG = {
@@ -58,8 +57,6 @@ app.use(
   })
 );
 app.use(compression());
-app.use(cookieParser());
-
 // CORS configuration
 app.use(corsMiddleware);
 // Body parsing middleware
@@ -141,5 +138,4 @@ app.use((req, res) => {
 // Global error handler
 app.use(errorHandler);
 // app.use(globalErrorHandler);
-
 export default app;

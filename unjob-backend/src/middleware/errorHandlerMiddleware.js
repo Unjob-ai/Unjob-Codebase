@@ -12,7 +12,7 @@ import  apiError  from "../utils/apiError.js"; // Adjust path as needed
   } else {
     res
       .status(500)
-      .json({ message: "unexpected error occur", success: "false" ,err:err});
+      .json({status:500, message: "unexpected error occur", success: "false" ,err:err});
   }
 }
 

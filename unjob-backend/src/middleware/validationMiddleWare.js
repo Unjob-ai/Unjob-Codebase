@@ -8,11 +8,6 @@ import apiError from "../utils/apiError.js";
 const handleValidationErrors = asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    // return res.status(400).json({
-    //   error: "Validation Error",
-    //   details: errors.array(),
-    // });
-    console.log("Validation errors:", errors.array());
     throw new apiError("Validation Error", 400, errors.array());
   }
   next();
@@ -52,6 +47,16 @@ const validateUserLogin = [
     .normalizeEmail()
     .withMessage("Please provide a valid email"),
   body("password").notEmpty().withMessage("Password is required"),
+  handleValidationErrors,
+];
+const validateResetPassword = [
+  body("password")
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters long")
+    .matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage(
+      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    ),
   handleValidationErrors,
 ];
 
@@ -470,4 +475,5 @@ export  {
 
   // Password validations
   validatePasswordChange,
+  validateResetPassword
 };
