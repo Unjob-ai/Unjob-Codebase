@@ -21,6 +21,7 @@ import  {
   validateUserLogin,
   validateEmail,
   validatePasswordChange,
+  validateResetPassword,
 } from "../middleware/validationMiddleWare.js"
 
 import { authMiddleware }  from "../middleware/authMiddleware.js";
@@ -42,7 +43,7 @@ router.post(
   validateEmail,
   forgotPassword
 );
-router.post("/reset-password/:token", passwordResetLimiter, resetPassword);
+router.post("/reset-password/:token", passwordResetLimiter,validateResetPassword, resetPassword);
 router.get("/verify-email/:token", verifyEmail);
 
 // Admin routes

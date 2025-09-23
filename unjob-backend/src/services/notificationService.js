@@ -1,7 +1,7 @@
 // services/notificationService.js - Complete Notification Service
 import nodemailer from "nodemailer";
 import EMAIL_TEMPLATES from "./emailTemplates.js";
-import Notification from "../models/Notification.js";
+import {Notification} from "../models/NotificationModel.js";
 class NotificationService {
   constructor() {
     this.transporter = null;
@@ -12,25 +12,26 @@ class NotificationService {
   // EMAIL CONFIGURATION
   // =============================================================================
   initializeEmailTransporter() {
-    try {
-      this.transporter = nodemailer.createTransporter({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: process.env.SMTP_PORT || 587,
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
+  try {
+    this.transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: process.env.SMTP_PORT || 587,
+      secure: false, // true for port 465
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
 
-      console.log("📧 Email transporter initialized successfully");
-    } catch (error) {
-      console.error("❌ Failed to initialize email transporter:", error);
-    }
+    console.log("📧 Email transporter initialized successfully");
+  } catch (error) {
+    console.error("❌ Failed to initialize email transporter:", error);
   }
+}
+
 
   // =============================================================================
   // CORE EMAIL SENDING FUNCTION

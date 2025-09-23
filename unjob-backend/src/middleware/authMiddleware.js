@@ -5,20 +5,24 @@ import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 
 const authMiddleware = asyncHandler(async (req, res, next) => {
-  const token = req.header("Authorization")?.replace(/^Bearer\s+/i, "").trim();
+  const token = req
+    .header("Authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
 
-  console.log("Auth Middleware Token:", token);
   if (!token) {
     throw new apiError("Access denied. No token provided.", 401);
   }
-
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
+  let decoded = "";
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    throw new apiError("Invalid token. User not found.", 401);
+  }
   // Find user by ID from token
   let user = await User.findById(decoded.userId || decoded.id).select(
     "-password"
   );
-
   if (!user) {
     throw new apiError("Invalid token. User not found.", 401);
   }
@@ -28,7 +32,10 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
 // Admin authentication middleware
 const adminAuthMiddleware = asyncHandler(async (req, res, next) => {
-  const token = req.header("Authorization")?.replace(/^Bearer\s+/i, "").trim();
+  const token = req
+    .header("Authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
 
   if (!token) {
     throw new apiError("Access denied. Admin token required.", 401);
@@ -84,7 +91,6 @@ const requireRole = (roles) => {
   });
 };
 
-
 // Middleware to check if profile is complete
 const requireCompleteProfile = asyncHandler(async (req, res, next) => {
   if (!req.user) {
@@ -96,7 +102,7 @@ const requireCompleteProfile = asyncHandler(async (req, res, next) => {
   }
 
   next();
-})
+});
 
 // Optional auth middleware (doesn't fail if no token)
 const optionalAuth = async (req, res, next) => {
@@ -133,8 +139,7 @@ const requireVerified = asyncHandler(async (req, res, next) => {
   }
 
   next();
-})
-
+});
 
 // Middleware to check if user is active
 const requireActive = asyncHandler(async (req, res, next) => {
