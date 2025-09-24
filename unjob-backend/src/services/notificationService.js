@@ -1,79 +1,106 @@
-// services/notificationService.js - Complete Notification Service
-import nodemailer from "nodemailer";
+import axios from "axios";
 import EMAIL_TEMPLATES from "./emailTemplates.js";
-import {Notification} from "../models/NotificationModel.js";
+import { Notification } from "../models/NotificationModel.js";
+
 class NotificationService {
   constructor() {
     this.transporter = null;
-    this.initializeEmailTransporter();
+    this.emailService = null;
+    this.initialized = false;
   }
 
-  // =============================================================================
-  // EMAIL CONFIGURATION
-  // =============================================================================
-  initializeEmailTransporter() {
-  try {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: process.env.SMTP_PORT || 587,
-      secure: false, // true for port 465
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    console.log("📧 Email transporter initialized successfully");
-  } catch (error) {
-    console.error("❌ Failed to initialize email transporter:", error);
-  }
-}
-
-
-  // =============================================================================
-  // CORE EMAIL SENDING FUNCTION
-  // =============================================================================
-  async sendEmail({ to, subject, html, priority = "normal" }) {
-    if (!this.transporter) {
-      console.error("❌ Email transporter not initialized");
-      return { success: false, error: "Email service not available" };
+  initializeEmailService() {
+    if (this.initialized) {
+      return;
     }
 
     try {
-      const mailOptions = {
-        from: `"UNJOB" <${process.env.SMTP_USER}>`,
-        to,
-        subject,
-        html,
-        priority,
+      const apiKey = process.env.BREVO_API_KEY;
+      const fromEmail =
+        process.env.FROM_EMAIL || "shishirshrivastava30@gmail.com";
+      const fromName = process.env.FROM_NAME || "UNJOB Team";
+
+      if (!apiKey) {
+        console.warn(
+          "BREVO_API_KEY not found. Email notifications will be disabled."
+        );
+        this.emailService = null;
+        this.initialized = true;
+        return;
+      }
+
+      this.emailService = {
+        apiKey,
+        apiUrl: "https://api.brevo.com/v3/smtp/email",
+        fromEmail,
+        fromName,
       };
 
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent successfully to ${to}:`, result.messageId);
+      console.log("Email service initialized successfully with Brevo");
+      this.initialized = true;
+    } catch (error) {
+      console.error("Failed to initialize email service:", error);
+      this.emailService = null;
+      this.initialized = true;
+    }
+  }
 
+  async sendEmail({ to, subject, html, text = null, priority = "normal" }) {
+    this.initializeEmailService();
+
+    if (!this.emailService) {
+      console.warn("Email service not available. Skipping email:", subject);
+      return {
+        success: false,
+        error: "Email service not configured",
+        to: Array.isArray(to) ? to : [to],
+        subject,
+      };
+    }
+
+    try {
+      const payload = {
+        sender: {
+          email: this.emailService.fromEmail,
+          name: this.emailService.fromName,
+        },
+        to: Array.isArray(to)
+          ? to.map((email) => ({ email }))
+          : [{ email: to }],
+        subject,
+        htmlContent: html,
+        ...(text && { textContent: text }),
+      };
+
+      const response = await axios.post(this.emailService.apiUrl, payload, {
+        headers: {
+          "api-key": this.emailService.apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+
+      console.log(`Email sent successfully to: ${to}`);
       return {
         success: true,
-        messageId: result.messageId,
-        to,
+        messageId: response.data.messageId,
+        to: Array.isArray(to) ? to : [to],
         subject,
       };
     } catch (error) {
-      console.error(`❌ Failed to send email to ${to}:`, error);
+      console.error(
+        `Email sending failed:`,
+        error.response?.data || error.message
+      );
       return {
         success: false,
-        error: error.message,
-        to,
+        error: error.response?.data?.message || error.message,
+        to: Array.isArray(to) ? to : [to],
         subject,
       };
     }
   }
 
-  // =============================================================================
-  // POST NOTIFICATIONS
-  // =============================================================================
   async notifyPostLike(recipientEmail, data) {
     const templateData = {
       recipientName: data.recipientName,
@@ -111,9 +138,6 @@ class NotificationService {
     });
   }
 
-  // =============================================================================
-  // MESSAGE NOTIFICATIONS
-  // =============================================================================
   async notifyNewMessage(recipientEmail, data) {
     const templateData = {
       recipientName: data.recipientName,
@@ -131,9 +155,6 @@ class NotificationService {
     });
   }
 
-  // =============================================================================
-  // PAYMENT NOTIFICATIONS
-  // =============================================================================
   async notifyPaymentApproved(recipientEmail, data) {
     const templateData = {
       recipientName: data.recipientName,
@@ -154,9 +175,213 @@ class NotificationService {
     });
   }
 
-  // =============================================================================
-  // SUBSCRIPTION NOTIFICATIONS
-  // =============================================================================
+  async sendPasswordResetEmail(email, resetToken, userName = "User") {
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    const expirationTime = "10 minutes";
+
+    const html = this.getPasswordResetTemplate({
+      userName,
+      resetUrl,
+      expirationTime,
+    });
+
+    const text = `
+Hi ${userName},
+
+You requested a password reset for your UNJOB account.
+
+Click the link below to reset your password:
+${resetUrl}
+
+This link will expire in ${expirationTime}.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+The UNJOB Team
+    `;
+
+    return await this.sendEmail({
+      to: email,
+      subject: "Reset Your UNJOB Password",
+      html,
+      text,
+    });
+  }
+
+  async sendEmailVerificationEmail(
+    email,
+    verificationToken,
+    userName = "User"
+  ) {
+    const verificationUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
+
+    const html = this.getEmailVerificationTemplate({
+      userName,
+      verificationUrl,
+    });
+
+    const text = `
+Hi ${userName},
+
+Welcome to UNJOB! Please verify your email address to complete your registration.
+
+Click the link below to verify your email:
+${verificationUrl}
+
+If you didn't create an account, please ignore this email.
+
+Best regards,
+The UNJOB Team
+    `;
+
+    return await this.sendEmail({
+      to: email,
+      subject: "Verify Your UNJOB Account",
+      html,
+      text,
+    });
+  }
+
+  async sendWelcomeEmail(recipientEmail, data) {
+    const templateData = {
+      recipientName: data.recipientName,
+      actionUrl: data.actionUrl || `${process.env.CLIENT_URL}/dashboard`,
+    };
+
+    const html = EMAIL_TEMPLATES.welcome(templateData);
+
+    return await this.sendEmail({
+      to: recipientEmail,
+      subject: "Welcome to UNJOB - Your Career Journey Starts Here",
+      html,
+    });
+  }
+
+  getPasswordResetTemplate({ userName, resetUrl, expirationTime }) {
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reset Your Password</title>
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; color: #333; padding: 0;">
+      
+      <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 40px 30px; text-align: center; border-bottom: 3px solid #10B981;">
+        <h1 style="color: #10B981; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: -0.5px;">UNJOB</h1>
+        <p style="color: #666; font-size: 16px; margin: 12px 0 0 0; font-weight: 400;">Password Reset Request</p>
+      </div>
+      
+      <div style="padding: 40px 30px;">
+        <div style="margin-bottom: 32px;">
+          <h2 style="color: #333; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">Reset Your Password</h2>
+          
+          <p style="color: #555; line-height: 1.6; font-size: 16px; margin: 0 0 12px 0;">
+            Hi <strong style="color: #333;">${userName}</strong>,
+          </p>
+          
+          <p style="color: #555; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+            We received a request to reset your password for your UNJOB account. Click the button below to reset your password:
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 40px 0;">
+          <a href="${resetUrl}" 
+             style="display: inline-block; 
+                    background: linear-gradient(135deg, #10B981 0%, #047857 100%); 
+                    color: #ffffff; 
+                    padding: 16px 32px; 
+                    text-decoration: none; 
+                    border-radius: 8px; 
+                    font-weight: 600; 
+                    font-size: 16px;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            Reset Password
+          </a>
+        </div>
+        
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 24px 0;">
+          <p style="color: #92400e; margin: 0; font-size: 14px;">
+            <strong>This link expires in ${expirationTime}.</strong>
+          </p>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0;">
+          If you didn't request this password reset, please ignore this email. Your password will not be changed.
+        </p>
+      </div>
+      
+      <div style="background-color: #f8fafc; padding: 24px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #6b7280; font-size: 14px; margin: 0 0 4px 0;">
+          © 2025 UNJOB. All rights reserved.
+        </p>
+      </div>
+    </body>
+    </html>
+    `;
+  }
+
+  getEmailVerificationTemplate({ userName, verificationUrl }) {
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verify Your Email</title>
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; color: #333; padding: 0;">
+      
+      <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 40px 30px; text-align: center; border-bottom: 3px solid #10B981;">
+        <h1 style="color: #10B981; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: -0.5px;">UNJOB</h1>
+        <p style="color: #666; font-size: 16px; margin: 12px 0 0 0; font-weight: 400;">Email Verification</p>
+      </div>
+      
+      <div style="padding: 40px 30px;">
+        <div style="margin-bottom: 32px;">
+          <h2 style="color: #333; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">Verify Your Email Address</h2>
+          
+          <p style="color: #555; line-height: 1.6; font-size: 16px; margin: 0 0 12px 0;">
+            Hi <strong style="color: #333;">${userName}</strong>,
+          </p>
+          
+          <p style="color: #555; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+            Welcome to UNJOB! Please verify your email address to complete your account setup and start exploring opportunities.
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 40px 0;">
+          <a href="${verificationUrl}" 
+             style="display: inline-block; 
+                    background: linear-gradient(135deg, #10B981 0%, #047857 100%); 
+                    color: #ffffff; 
+                    padding: 16px 32px; 
+                    text-decoration: none; 
+                    border-radius: 8px; 
+                    font-weight: 600; 
+                    font-size: 16px;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            Verify Email Address
+          </a>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0;">
+          If you didn't create an account with UNJOB, please ignore this email.
+        </p>
+      </div>
+      
+      <div style="background-color: #f8fafc; padding: 24px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #6b7280; font-size: 14px; margin: 0 0 4px 0;">
+          © 2025 UNJOB. All rights reserved.
+        </p>
+      </div>
+    </body>
+    </html>
+    `;
+  }
+
   async notifySubscriptionActivated(recipientEmail, data) {
     const templateData = {
       recipientName: data.recipientName,
@@ -215,27 +440,6 @@ class NotificationService {
     });
   }
 
-  // =============================================================================
-  // WELCOME & SYSTEM NOTIFICATIONS
-  // =============================================================================
-  async sendWelcomeEmail(recipientEmail, data) {
-    const templateData = {
-      recipientName: data.recipientName,
-      actionUrl: data.actionUrl || `${process.env.CLIENT_URL}/profile/edit`,
-    };
-
-    const html = EMAIL_TEMPLATES.welcome(templateData);
-
-    return await this.sendEmail({
-      to: recipientEmail,
-      subject: "Welcome to UNJOB - Your Career Journey Starts Here",
-      html,
-    });
-  }
-
-  // =============================================================================
-  // GENERIC NOTIFICATION
-  // =============================================================================
   async sendGenericNotification(recipientEmail, data) {
     const templateData = {
       recipientName: data.recipientName,
@@ -256,9 +460,6 @@ class NotificationService {
     });
   }
 
-  // =============================================================================
-  // BULK NOTIFICATION METHODS
-  // =============================================================================
   async sendBulkNotifications(recipients, templateType, data) {
     const results = [];
 
@@ -328,11 +529,10 @@ class NotificationService {
           ...result,
         });
 
-        // Add delay between emails to avoid spam
         await new Promise((resolve) => setTimeout(resolve, 100));
       } catch (error) {
         console.error(
-          `❌ Failed to send bulk notification to ${recipient.email}:`,
+          `Failed to send bulk notification to ${recipient.email}:`,
           error
         );
         results.push({
@@ -347,7 +547,7 @@ class NotificationService {
     const failureCount = results.filter((r) => !r.success).length;
 
     console.log(
-      `📧 Bulk notification complete: ${successCount} sent, ${failureCount} failed`
+      `Bulk notification complete: ${successCount} sent, ${failureCount} failed`
     );
 
     return {
@@ -358,12 +558,8 @@ class NotificationService {
     };
   }
 
-  // =============================================================================
-  // IN-APP NOTIFICATION METHODS
-  // =============================================================================
   async createInAppNotification(userId, notificationData) {
     try {
-
       const notification = new Notification({
         user: userId,
         type: notificationData.type,
@@ -380,25 +576,21 @@ class NotificationService {
       });
 
       await notification.save();
-      console.log("✅ In-app notification created:", notification._id);
+      console.log("In-app notification created:", notification._id);
 
       return { success: true, notification };
     } catch (error) {
-      console.error("❌ Failed to create in-app notification:", error);
+      console.error("Failed to create in-app notification:", error);
       return { success: false, error: error.message };
     }
   }
 
-  // =============================================================================
-  // COMBINED NOTIFICATION METHODS (EMAIL + IN-APP)
-  // =============================================================================
   async notifyUser(userId, userEmail, notificationData, options = {}) {
     const results = {
       email: null,
       inApp: null,
     };
 
-    // Send in-app notification
     if (options.sendInApp !== false) {
       results.inApp = await this.createInAppNotification(
         userId,
@@ -406,7 +598,6 @@ class NotificationService {
       );
     }
 
-    // Send email notification
     if (options.sendEmail !== false && userEmail) {
       const emailData = {
         recipientName: notificationData.recipientName || "User",
@@ -461,20 +652,25 @@ class NotificationService {
     return results;
   }
 
-  // =============================================================================
-  // UTILITY METHODS
-  // =============================================================================
   async testEmailConnection() {
-    try {
-      if (!this.transporter) {
-        throw new Error("Email transporter not initialized");
-      }
+    if (!this.emailService) {
+      return {
+        success: false,
+        error: "Email service not configured",
+      };
+    }
 
-      await this.transporter.verify();
-      console.log("✅ Email connection test successful");
-      return { success: true, message: "Email connection verified" };
+    try {
+      const testResult = await this.sendEmail({
+        to: this.emailService.fromEmail,
+        subject: "UNJOB Email Service Test",
+        html: "<h1>Email service is working!</h1><p>This is a test email from UNJOB using Brevo API.</p>",
+        text: "Email service is working! This is a test email from UNJOB using Brevo API.",
+      });
+
+      return testResult;
     } catch (error) {
-      console.error("❌ Email connection test failed:", error);
+      console.error("Email connection test failed:", error);
       return { success: false, error: error.message };
     }
   }
@@ -492,16 +688,9 @@ class NotificationService {
     return await this.sendGenericNotification(recipientEmail, testData);
   }
 
-  // =============================================================================
-  // QUEUE MANAGEMENT (For future implementation)
-  // =============================================================================
   async queueNotification(notificationData, priority = "normal") {
-    // This method can be implemented with a queue system like Bull or Agenda
-    // For now, it directly processes the notification
-    console.log("📋 Queuing notification:", notificationData.type);
+    console.log("Queuing notification:", notificationData.type);
 
-    // In a real implementation, you would add this to a queue
-    // For now, we'll process it immediately
     return await this.notifyUser(
       notificationData.userId,
       notificationData.userEmail,
@@ -510,23 +699,15 @@ class NotificationService {
     );
   }
 
-  // =============================================================================
-  // NOTIFICATION PREFERENCES (For future implementation)
-  // =============================================================================
   async checkUserPreferences(userId, notificationType) {
-    // This method would check user's notification preferences
-    // For now, return default preferences
     return {
       email: true,
       inApp: true,
-      push: false, // For future push notifications
+      push: false,
     };
   }
 }
 
-// =============================================================================
-// EXPORT SINGLETON INSTANCE
-// =============================================================================
 const notificationService = new NotificationService();
 
 export default notificationService;

@@ -50,14 +50,9 @@ const sendAdminTokenResponse = (admin, statusCode, res, message) => {
   const adminResponse = admin.toObject();
   delete adminResponse.password;
   res.setHeader("Authorization", `Bearer ${token}`);
-  res.status(statusCode).json(
-    new apiResponse(
-      statusCode,
-      true,
-     adminResponse,
-      message
-    )
-  );
+  res
+    .status(statusCode)
+    .json(new apiResponse(statusCode, true, adminResponse, message));
 };
 
 // @desc    Register a new user
@@ -87,8 +82,23 @@ const register = asyncHandler(async (req, res) => {
   if (!user) {
     throw new apiError("User registration failed", 500);
   }
+
+  // Send welcome email for email provider users
+  if (provider === "email") {
+    try {
+      await notificationService.sendWelcomeEmail(user.email, {
+        recipientName: user.name,
+      });
+      console.log("✅ Welcome email sent to:", user.email);
+    } catch (error) {
+      console.error("❌ Failed to send welcome email:", error);
+      // Don't fail the registration if email fails
+    }
+  }
+
   await sendTokenResponse(user, 201, res, "User registered successfully");
 });
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
@@ -112,7 +122,6 @@ const login = asyncHandler(async (req, res) => {
   // Update last login
   user.lastLogin = new Date();
   await user.save({ validateBeforeSave: false });
-
 
   await sendTokenResponse(user, 200, res, "Login successful");
 });
@@ -158,6 +167,16 @@ const googleAuth = asyncHandler(async (req, res) => {
       isVerified: true,
       lastLogin: new Date(),
     });
+
+    // Send welcome email for new Google users
+    try {
+      await notificationService.sendWelcomeEmail(user.email, {
+        recipientName: user.name,
+      });
+      console.log("✅ Welcome email sent to new Google user:", user.email);
+    } catch (error) {
+      console.error("❌ Failed to send welcome email to Google user:", error);
+    }
   }
 
   await sendTokenResponse(user, 200, res, "Google authentication successful");
@@ -198,7 +217,7 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({ email });
   if (!user) {
-   throw new apiError("Invalid Email",401)
+    throw new apiError("Invalid Email", 401);
   }
 
   // Generate reset token
@@ -211,20 +230,33 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
 
   await user.save({ validateBeforeSave: false });
 
-  const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-  console.log("[Auth] Password reset requested for:", email);
-  console.log("[Auth] Reset URL:", resetUrl);
+  // Send password reset email
+  try {
+    await notificationService.sendPasswordResetEmail(
+      email,
+      resetToken,
+      user.name
+    );
+    console.log("✅ Password reset email sent to:", email);
+  } catch (error) {
+    // If email fails, clear the reset token
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+    console.error("❌ Failed to send password reset email:", error);
+    throw new apiError("Email could not be sent", 500);
+  }
 
-  // TODO: Send email with reset link
-  // await notificationService.sendEmail({
-  //   to: user.email,
-  //   subject: 'Password Reset',
-  //   template: 'resetPassword',
-  //   data: { name: user.name, resetUrl }
-  // });
-const data=(process.env.NODE_ENV === "development" && { resetUrl })
-  res.status(200).json(new apiResponse(200, true,data , "Password reset link sent to email"));
-        
+  const data =
+    process.env.NODE_ENV === "development"
+      ? { resetToken: resetToken } // Only in development
+      : {};
+
+  res
+    .status(200)
+    .json(
+      new apiResponse(200, true, data, "Password reset link sent to email")
+    );
 });
 
 // @desc    Reset password
@@ -307,23 +339,27 @@ const sendEmailVerification = asyncHandler(async (req, res, next) => {
   if (req.user.verified) {
     throw new apiError("Email is already verified", 400);
   }
+
   // Generate verification token
   const verificationToken = crypto.randomBytes(32).toString("hex");
   req.user.verificationToken = verificationToken;
   await req.user.save({ validateBeforeSave: false });
 
-  const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
-
-  console.log("[Auth] Email verification requested for:", req.user.email);
-  console.log("[Auth] Verification URL:", verifyUrl);
-
-  // TODO: Send verification email
-  // await sendEmail({
-  //   to: req.user.email,
-  //   subject: 'Verify Your Email',
-  //   template: 'verifyEmail',
-  //   data: { name: req.user.name, verifyUrl }
-  // });
+  // Send verification email
+  try {
+    await notificationService.sendEmailVerificationEmail(
+      req.user.email,
+      verificationToken,
+      req.user.name
+    );
+    console.log("✅ Email verification sent to:", req.user.email);
+  } catch (error) {
+    // Clear verification token if email fails
+    req.user.verificationToken = undefined;
+    await req.user.save({ validateBeforeSave: false });
+    console.error("❌ Failed to send verification email:", error);
+    throw new apiError("Verification email could not be sent", 500);
+  }
 
   res
     .status(200)
@@ -382,13 +418,9 @@ const refreshToken = asyncHandler(async (req, res) => {
 const adminLogin = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
-  // console.log("[Auth] Admin login attempt for:", email);
-
   // Check if it's the default admin credentials
   const isDefaultAdmin =
     email.toLowerCase() === "admin@gmail.com" && password === "admin@unjob.ai";
-
-  // console.log("[Auth] Is default admin:", isDefaultAdmin);
 
   if (isDefaultAdmin) {
     // Create a temporary admin object for the default admin
@@ -409,7 +441,6 @@ const adminLogin = asyncHandler(async (req, res, next) => {
       },
     };
 
-    // console.log("[Auth] Default admin login successful");
     return sendAdminTokenResponse(
       defaultAdmin,
       200,
@@ -443,8 +474,6 @@ const adminLogin = asyncHandler(async (req, res, next) => {
   admin.lastLogin = new Date();
   await admin.save({ validateBeforeSave: false });
 
-  // console.log("[Auth] Admin login successful for:", admin._id);
-
   sendAdminTokenResponse(admin, 200, res, "Admin login successful");
 });
 
@@ -470,9 +499,68 @@ const initializeAdmin = asyncHandler(async (req, res, next) => {
     isActive: true,
   });
 
-  // console.log("[Auth] Default admin created:", admin._id);
-
   sendAdminTokenResponse(admin, 201, res, "Default admin created successfully");
+});
+
+// @desc    Test email functionality (Admin only)
+// @route   POST /api/auth/test-email
+// @access  Private (Admin only)
+const testEmail = asyncHandler(async (req, res) => {
+  // Check if user is admin
+  if (req.user.role !== "admin") {
+    throw new apiError("Access denied. Admin privileges required.", 403);
+  }
+
+  const { email, type = "test" } = req.body;
+
+  if (!email) {
+    throw new apiError("Email address is required", 400);
+  }
+
+  let result;
+
+  try {
+    switch (type) {
+      case "test":
+        result = await notificationService.sendTestEmail(email);
+        break;
+      case "welcome":
+        result = await notificationService.sendWelcomeEmail(email, {
+          recipientName: "Test User",
+        });
+        break;
+      case "reset":
+        result = await notificationService.sendPasswordResetEmail(
+          email,
+          "test-token-123",
+          "Test User"
+        );
+        break;
+      case "verification":
+        result = await notificationService.sendEmailVerificationEmail(
+          email,
+          "test-verification-token-123",
+          "Test User"
+        );
+        break;
+      default:
+        throw new apiError("Invalid email type", 400);
+    }
+
+    res
+      .status(200)
+      .json(
+        new apiResponse(
+          200,
+          true,
+          result,
+          `Test ${type} email sent successfully`
+        )
+      );
+  } catch (error) {
+    console.error("❌ Test email failed:", error);
+    throw new apiError("Failed to send test email: " + error.message, 500);
+  }
 });
 
 export {
@@ -489,4 +577,5 @@ export {
   refreshToken,
   adminLogin,
   initializeAdmin,
+  testEmail,
 };
