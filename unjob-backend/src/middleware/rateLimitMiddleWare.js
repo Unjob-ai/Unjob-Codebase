@@ -1,4 +1,4 @@
-// middleware/rateLimit.js
+// middleware/rateLimitMiddleWare.js
 import rateLimit from "express-rate-limit";
 import apiError from "../utils/apiError.js";
 
@@ -106,6 +106,16 @@ const postLimiter = createRateLimiter({
   },
 });
 
+// Comment creation rate limiter
+const commentLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 25,
+  message: {
+    error: "Too many comments created, please try again later.",
+    type: "COMMENT_RATE_LIMIT_EXCEEDED",
+  },
+});
+
 // Gig creation rate limiter
 const gigLimiter = createRateLimiter({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
@@ -155,6 +165,7 @@ export {
   uploadLimiter,
   messageLimiter,
   postLimiter,
+  commentLimiter, // Added comment limiter
   gigLimiter,
   applicationLimiter,
   searchLimiter,

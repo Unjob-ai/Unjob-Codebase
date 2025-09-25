@@ -1,8 +1,8 @@
 // server.js - Fixed environment loading order
 import dotenv from "dotenv";
 
-// CRITICAL: Load environment variables FIRST before any other imports
 dotenv.config();
+
 
 // Now import everything else - this ensures all modules have access to env vars
 import http from "http";
@@ -31,6 +31,8 @@ const CONFIG = {
     "https://www.unjob.ai",
   ],
 };
+
+
 
 // Validate critical environment variables
 const validateEnvVars = () => {
