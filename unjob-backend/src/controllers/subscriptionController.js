@@ -1,4 +1,4 @@
-// controllers/subscriptionController.js
+// controllers/subscriptionController.js - FIXED Payment Model Issues
 import crypto from "crypto";
 import Razorpay from "razorpay";
 import { Subscription } from "../models/SubscriptionModel.js";
@@ -68,6 +68,36 @@ const getRazorpayInstance = () => {
   return razorpay;
 };
 
+// Helper function to create payment record with proper error handling
+const createPaymentRecord = async (paymentData) => {
+  try {
+    const paymentRecord = new Payment({
+      // FIXED: Use 'payee' instead of 'payer' to match Payment model
+      payee: paymentData.userId,
+      payer: paymentData.userId, // Include both if model supports it
+      amount: paymentData.amount,
+      currency: paymentData.currency || "INR",
+      status: paymentData.status,
+      type: paymentData.type || "subscription",
+      paymentMethod: paymentData.paymentMethod || "razorpay",
+      transactionId: paymentData.transactionId,
+      description:
+        paymentData.description ||
+        `${paymentData.planType} subscription payment`,
+      metadata: paymentData.metadata || {},
+      razorpayDetails: paymentData.razorpayDetails || {},
+    });
+
+    const savedPayment = await paymentRecord.save();
+    console.log("✅ Payment record created successfully:", savedPayment._id);
+    return savedPayment;
+  } catch (paymentError) {
+    console.error("❌ Failed to create payment record:", paymentError.message);
+    // Don't throw error here to prevent subscription activation failure
+    return null;
+  }
+};
+
 // @desc    Create subscription
 // @route   POST /api/subscription/create
 // @access  Private
@@ -108,7 +138,7 @@ const createSubscription = asyncHandler(async (req, res) => {
     const existingSubscription = await Subscription.findOne({
       user: user._id,
       status: "active",
-      endDate: { $gt: new Date() },
+      $or: [{ duration: "lifetime" }, { endDate: { $gt: new Date() } }],
     });
 
     if (existingSubscription) {
@@ -183,6 +213,23 @@ const createSubscription = asyncHandler(async (req, res) => {
 
     await freeSubscription.save();
     console.log("✅ Free subscription activated in DB:", freeSubscription._id);
+
+    // Create free payment record
+    await createPaymentRecord({
+      userId: user._id,
+      amount: 0,
+      status: "completed",
+      type: "subscription",
+      paymentMethod: "free",
+      transactionId: `free_${Date.now()}`,
+      planType: "free",
+      description: "Free plan activation",
+      metadata: {
+        subscriptionId: freeSubscription._id,
+        planType: "free",
+        duration,
+      },
+    });
 
     return res.status(200).json(
       new apiResponse(
@@ -578,35 +625,29 @@ const verifyPayment = asyncHandler(async (req, res) => {
   await subscription.save();
   console.log("Subscription activated:", subscription._id);
 
-  // Create payment record for history tracking
-  try {
-    const paymentRecord = new Payment({
-      payer: subscription.user,
-      amount: subscription.price,
-      currency: "INR",
-      status: "completed",
-      type: "subscription",
-      paymentMethod: "razorpay",
-      transactionId: razorpay_payment_id || razorpay_subscription_id,
-      metadata: {
-        subscriptionId: subscription._id,
-        planType: subscription.planType,
-        duration: subscription.duration,
-        paymentType: paymentType,
-      },
-      razorpayDetails: {
-        paymentId: razorpay_payment_id,
-        orderId: razorpay_order_id,
-        subscriptionId: razorpay_subscription_id,
-        signature: razorpay_signature,
-      },
-    });
-
-    await paymentRecord.save();
-    console.log("Payment record created:", paymentRecord._id);
-  } catch (paymentRecordError) {
-    console.error("Failed to create payment record:", paymentRecordError);
-  }
+  // Create payment record for history tracking - FIXED
+  await createPaymentRecord({
+    userId: subscription.user,
+    amount: subscription.price,
+    status: "completed",
+    type: "subscription",
+    paymentMethod: "razorpay",
+    transactionId: razorpay_payment_id || razorpay_subscription_id,
+    planType: subscription.planType,
+    description: `${subscription.planType} plan payment verification`,
+    metadata: {
+      subscriptionId: subscription._id,
+      planType: subscription.planType,
+      duration: subscription.duration,
+      paymentType: paymentType || "one-time",
+    },
+    razorpayDetails: {
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      subscriptionId: razorpay_subscription_id,
+      signature: razorpay_signature,
+    },
+  });
 
   // Get plan limits for response
   const planLimits = getPlanLimits(
@@ -657,9 +698,12 @@ const getSubscriptionManagement = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(10);
 
-  // Get payment history for subscriptions
+  // Get payment history for subscriptions - FIXED query
   const paymentHistory = await Payment.find({
-    payer: user._id,
+    $or: [
+      { payee: user._id }, // Try payee field
+      { payer: user._id }, // Also try payer field for compatibility
+    ],
     type: "subscription",
   })
     .sort({ createdAt: -1 })
@@ -944,7 +988,7 @@ const handleWebhook = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, true, {}, "Webhook processed successfully"));
 });
 
-// Webhook event handlers (same as before but using the imported payment handling)
+// Webhook event handlers - FIXED with proper Payment model usage
 async function handleSubscriptionCharged(payload) {
   try {
     const { subscription: razorpaySubscription, payment } = payload;
@@ -968,36 +1012,27 @@ async function handleSubscriptionCharged(payload) {
     subscription.paymentDetails.lastPaymentDate = new Date();
     await subscription.save();
 
-    // Create payment record for history
-    try {
-      const paymentRecord = new Payment({
-        payer: subscription.user,
-        amount: payment.amount / 100,
-        currency: "INR",
-        status: "completed",
-        type: "subscription",
-        paymentMethod: "razorpay",
-        transactionId: payment.id,
-        metadata: {
-          subscriptionId: subscription._id,
-          planType: subscription.planType,
-          duration: subscription.duration,
-          razorpaySubscriptionId: razorpaySubscription.id,
-        },
-        razorpayDetails: {
-          paymentId: payment.id,
-          subscriptionId: razorpaySubscription.id,
-        },
-      });
-
-      await paymentRecord.save();
-      console.log("Payment record created from webhook:", paymentRecord._id);
-    } catch (paymentError) {
-      console.error(
-        "Failed to create payment record in webhook:",
-        paymentError
-      );
-    }
+    // Create payment record for history - FIXED
+    await createPaymentRecord({
+      userId: subscription.user,
+      amount: payment.amount / 100,
+      status: "completed",
+      type: "subscription",
+      paymentMethod: "razorpay",
+      transactionId: payment.id,
+      planType: subscription.planType,
+      description: `${subscription.planType} subscription charged`,
+      metadata: {
+        subscriptionId: subscription._id,
+        planType: subscription.planType,
+        duration: subscription.duration,
+        razorpaySubscriptionId: razorpaySubscription.id,
+      },
+      razorpayDetails: {
+        paymentId: payment.id,
+        subscriptionId: razorpaySubscription.id,
+      },
+    });
 
     console.log("Subscription charged successfully:", subscription._id);
   } catch (error) {
@@ -1174,33 +1209,27 @@ async function handlePaymentFailed(payload) {
     });
     await subscription.save();
 
-    // Create failed payment record
-    try {
-      const paymentRecord = new Payment({
-        payer: subscription.user,
-        amount: payment.amount / 100,
-        currency: "INR",
-        status: "failed",
-        type: "subscription",
-        paymentMethod: "razorpay",
-        transactionId: payment.id,
-        metadata: {
-          subscriptionId: subscription._id,
-          planType: subscription.planType,
-          duration: subscription.duration,
-          failureReason: payment.error_description,
-        },
-        razorpayDetails: {
-          paymentId: payment.id,
-          orderId: payment.order_id,
-        },
-      });
-
-      await paymentRecord.save();
-      console.log("Failed payment record created:", paymentRecord._id);
-    } catch (paymentError) {
-      console.error("Failed to create failed payment record:", paymentError);
-    }
+    // Create failed payment record - FIXED
+    await createPaymentRecord({
+      userId: subscription.user,
+      amount: payment.amount / 100,
+      status: "failed",
+      type: "subscription",
+      paymentMethod: "razorpay",
+      transactionId: payment.id,
+      planType: subscription.planType,
+      description: `Failed ${subscription.planType} subscription payment`,
+      metadata: {
+        subscriptionId: subscription._id,
+        planType: subscription.planType,
+        duration: subscription.duration,
+        failureReason: payment.error_description,
+      },
+      razorpayDetails: {
+        paymentId: payment.id,
+        orderId: payment.order_id,
+      },
+    });
 
     console.log("Payment failed handled for subscription:", subscription._id);
   } catch (error) {

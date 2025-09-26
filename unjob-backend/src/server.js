@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-
 // Now import everything else - this ensures all modules have access to env vars
 import http from "http";
 import { Server } from "socket.io";
@@ -29,10 +28,9 @@ const CONFIG = {
     process.env.ADMIN_URL || "http://localhost:3001",
     "https://unjob.ai",
     "https://www.unjob.ai",
+    "http://127.0.0.1:5500"
   ],
 };
-
-
 
 // Validate critical environment variables
 const validateEnvVars = () => {
@@ -51,21 +49,41 @@ const validateEnvVars = () => {
       "Config",
       "Please check your .env file and restart the server"
     );
-    
+
     // Log current env values for debugging (without sensitive data)
     log("DEBUG", "Config", `NODE_ENV: ${process.env.NODE_ENV}`);
     log("DEBUG", "Config", `PORT: ${process.env.PORT}`);
-    log("DEBUG", "Config", `FROM_EMAIL: ${process.env.FROM_EMAIL ? 'SET' : 'NOT SET'}`);
-    log("DEBUG", "Config", `BREVO_API_KEY: ${process.env.BREVO_API_KEY ? 'SET' : 'NOT SET'}`);
-    
+    log(
+      "DEBUG",
+      "Config",
+      `FROM_EMAIL: ${process.env.FROM_EMAIL ? "SET" : "NOT SET"}`
+    );
+    log(
+      "DEBUG",
+      "Config",
+      `BREVO_API_KEY: ${process.env.BREVO_API_KEY ? "SET" : "NOT SET"}`
+    );
+
     process.exit(1);
   }
 
-  log("INFO", "Config", "All required environment variables loaded successfully");
-  
+  log(
+    "INFO",
+    "Config",
+    "All required environment variables loaded successfully"
+  );
+
   // Debug log for email configuration
-  log("INFO", "Email", `Email service configured with FROM_EMAIL: ${process.env.FROM_EMAIL}`);
-  log("INFO", "Email", `Brevo API key configured: ${process.env.BREVO_API_KEY ? 'YES' : 'NO'}`);
+  log(
+    "INFO",
+    "Email",
+    `Email service configured with FROM_EMAIL: ${process.env.FROM_EMAIL}`
+  );
+  log(
+    "INFO",
+    "Email",
+    `Brevo API key configured: ${process.env.BREVO_API_KEY ? "YES" : "NO"}`
+  );
 };
 
 // Socket.IO setup
@@ -135,7 +153,11 @@ const shutdown = (signal) => {
       // Close database connection
       mongoose.connection.close((err) => {
         if (err) {
-          log("ERROR", "Database", `Error closing MongoDB connection: ${err.message}`);
+          log(
+            "ERROR",
+            "Database",
+            `Error closing MongoDB connection: ${err.message}`
+          );
         } else {
           log("INFO", "Database", "MongoDB connection closed");
         }
@@ -180,7 +202,13 @@ async function serverRunner() {
         `🌐 CORS origins: ${CONFIG.ALLOWED_ORIGINS.join(", ")}`
       );
       log("INFO", "Server", `📊 Socket.IO enabled`);
-      log("INFO", "Email", `📧 Email service status: ${process.env.BREVO_API_KEY ? 'ENABLED' : 'DISABLED'}`);
+      log(
+        "INFO",
+        "Email",
+        `📧 Email service status: ${
+          process.env.BREVO_API_KEY ? "ENABLED" : "DISABLED"
+        }`
+      );
       log(
         "INFO",
         "Server",
