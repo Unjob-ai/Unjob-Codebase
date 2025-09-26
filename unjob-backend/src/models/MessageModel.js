@@ -1,89 +1,55 @@
-// models/Message.js
-import mongoose  from "mongoose"
+// models/MessageModel.js
+import mongoose from "mongoose";
 
-const MessageSchema = new mongoose.Schema(
+const messageSchema = new mongoose.Schema(
   {
     conversationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Conversation",
       required: true,
+      index: true,
     },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function () {
+        return this.type !== "system";
+      },
     },
     content: {
       type: String,
       required: function () {
-        return this.type === "text" || this.type === "system";
+        return this.type === "text" && !this.fileUrl;
       },
+      trim: true,
     },
     type: {
       type: String,
       enum: [
         "text",
-        "image",
         "file",
-        "voice",
+        "image",
+        "video",
+        "audio",
+        "document",
         "system",
+        "negotiation",
         "project_submission",
-        "payment_notification",
+        "payment_confirmation",
       ],
       default: "text",
     },
-    fileUrl: {
+    status: {
       type: String,
-      required: function () {
-        return (
-          this.type === "file" || this.type === "image" || this.type === "voice"
-        );
-      },
+      enum: ["sent", "delivered", "read", "failed"],
+      default: "sent",
     },
-    fileName: {
-      type: String,
-    },
-    fileSize: {
-      type: Number,
-    },
-    fileMimeType: {
-      type: String,
-    },
-
-    // Project submission specific fields
-    projectId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Project",
-    },
-    projectData: {
-      title: String,
-      description: String,
-      files: [
-        {
-          name: String,
-          url: String,
-          type: String,
-          size: Number,
-        },
-      ],
-    },
-
-    // Payment notification specific fields
-    paymentId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Payment",
-    },
-    paymentData: {
-      amount: Number,
-      status: String,
-      gigTitle: String,
-    },
-
     readBy: [
       {
         user: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
+          required: true,
         },
         readAt: {
           type: Date,
@@ -91,75 +57,64 @@ const MessageSchema = new mongoose.Schema(
         },
       },
     ],
+    // File-related fields
+    fileUrl: String,
+    fileName: String,
+    fileSize: String,
+    fileType: String,
+    fileMimeType: String,
 
-    // Message status for delivery confirmation
-    status: {
-      type: String,
-      enum: ["sending", "sent", "delivered", "read", "failed"],
-      default: "sent",
+    // Project submission fields
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
     },
 
-    // Message reactions
-    reactions: [
-      {
-        user: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-        },
-        emoji: {
-          type: String,
-          required: true,
-        },
-        reactedAt: {
-          type: Date,
-          default: Date.now,
-        },
+    // Negotiation-related fields
+    negotiationData: {
+      _id: mongoose.Schema.Types.ObjectId,
+      proposedPrice: Number,
+      timeline: String,
+      additionalTerms: String,
+      proposedBy: {
+        type: String,
+        enum: ["freelancer", "client", "hiring"],
       },
-    ],
-
-    // Message editing
-    editedAt: Date,
-    isEdited: {
-      type: Boolean,
-      default: false,
+      proposedAt: Date,
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "rejected", "countered"],
+        default: "pending",
+      },
+      responseAction: String,
+      respondedAt: Date,
+      respondedBy: String,
+      rejectionReason: String,
+      priceChange: {
+        amount: Number,
+        percentage: Number,
+        type: String,
+      },
+      previousPrice: Number,
+      expiresAt: Date,
     },
-    originalContent: String,
 
-    // System message styling
+    // System message fields
     isSystemMessage: {
       type: Boolean,
       default: false,
     },
 
-    // Message priority for important notifications
+    // Additional metadata
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
     priority: {
       type: String,
       enum: ["low", "normal", "high", "urgent"],
       default: "normal",
-    },
-
-    // Reply functionality
-    replyTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
-    },
-
-    // Forward functionality
-    forwardedFrom: {
-      originalMessage: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Message",
-      },
-      originalSender: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    },
-
-    // Message metadata
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
     },
 
     // Soft delete
@@ -172,93 +127,106 @@ const MessageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    // Edit history
+    editHistory: [
+      {
+        editedAt: Date,
+        originalContent: String,
+        editReason: String,
+      },
+    ],
+
+    // Reply/thread functionality
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+
+    // Reactions
+    reactions: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        emoji: String,
+        reactedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
-// Pre-save middleware to set system message flag
-MessageSchema.pre("save", function (next) {
-  if (this.type === "system" || this.type === "payment_notification") {
-    this.isSystemMessage = true;
-    this.priority = "high";
-  }
+// Indexes for better performance
+messageSchema.index({ conversationId: 1, createdAt: -1 });
+messageSchema.index({ sender: 1, createdAt: -1 });
+messageSchema.index({ "readBy.user": 1 });
+messageSchema.index({ type: 1 });
+messageSchema.index({ isDeleted: 1 });
 
-  // Set original content for edited messages
-  if (this.isModified("content") && !this.isNew && !this.originalContent) {
-    this.originalContent = this.content;
-    this.isEdited = true;
-    this.editedAt = new Date();
-  }
-
-  next();
+// Virtual for unread status
+messageSchema.virtual("isUnread").get(function () {
+  return this.status !== "read";
 });
 
-// Instance methods
-MessageSchema.methods.markAsReadBy = function (userId) {
-  const existingRead = this.readBy.find(
-    (read) => read.user.toString() === userId.toString()
-  );
-
-  if (!existingRead) {
-    this.readBy.push({ user: userId });
-    this.status = "read";
-  }
-
-  return this.save();
-};
-
-MessageSchema.methods.addReaction = function (userId, emoji) {
-  // Remove existing reaction from this user
-  this.reactions = this.reactions.filter(
-    (reaction) => reaction.user.toString() !== userId.toString()
-  );
-
-  // Add new reaction
-  this.reactions.push({ user: userId, emoji });
-
-  return this.save();
-};
-
-MessageSchema.methods.removeReaction = function (userId) {
-  this.reactions = this.reactions.filter(
-    (reaction) => reaction.user.toString() !== userId.toString()
-  );
-
-  return this.save();
-};
-
-MessageSchema.methods.editContent = function (newContent) {
-  if (!this.originalContent) {
-    this.originalContent = this.content;
-  }
-
-  this.content = newContent;
-  this.isEdited = true;
-  this.editedAt = new Date();
-
-  return this.save();
-};
-
-MessageSchema.methods.softDelete = function (userId) {
-  this.isDeleted = true;
-  this.deletedAt = new Date();
-  this.deletedBy = userId;
-
-  return this.save();
-};
-
-MessageSchema.methods.isReadBy = function (userId) {
-  return this.readBy.some((read) => read.user.toString() === userId.toString());
-};
-
 // Static methods
-MessageSchema.statics.findUnreadInConversation = function (
+messageSchema.statics.getConversationMessages = async function (
   conversationId,
-  userId
+  options = {}
 ) {
-  return this.find({
+  const { page = 1, limit = 50, userId } = options;
+  const skip = (page - 1) * limit;
+
+  const messages = await this.find({
+    conversationId,
+    isDeleted: false,
+  })
+    .populate("sender", "name image role")
+    .populate("replyTo", "content sender")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  // Mark messages as read if userId is provided
+  if (userId) {
+    const unreadMessageIds = messages
+      .filter(
+        (msg) =>
+          msg.sender?._id?.toString() !== userId.toString() &&
+          !msg.readBy.some((read) => read.user.toString() === userId.toString())
+      )
+      .map((msg) => msg._id);
+
+    if (unreadMessageIds.length > 0) {
+      await this.updateMany(
+        { _id: { $in: unreadMessageIds } },
+        {
+          $addToSet: {
+            readBy: {
+              user: userId,
+              readAt: new Date(),
+            },
+          },
+          $set: { status: "read" },
+        }
+      );
+    }
+  }
+
+  return messages;
+};
+
+messageSchema.statics.getUnreadCount = async function (conversationId, userId) {
+  return await this.countDocuments({
     conversationId,
     sender: { $ne: userId },
     "readBy.user": { $ne: userId },
@@ -266,8 +234,8 @@ MessageSchema.statics.findUnreadInConversation = function (
   });
 };
 
-MessageSchema.statics.markAllAsRead = function (conversationId, userId) {
-  return this.updateMany(
+messageSchema.statics.markAllAsRead = async function (conversationId, userId) {
+  return await this.updateMany(
     {
       conversationId,
       sender: { $ne: userId },
@@ -286,45 +254,156 @@ MessageSchema.statics.markAllAsRead = function (conversationId, userId) {
   );
 };
 
-MessageSchema.statics.getConversationMessages = function (
+// Static method to create negotiation messages
+messageSchema.statics.createNegotiationMessage = async function (
   conversationId,
-  options = {}
+  senderId,
+  negotiationData
 ) {
-  const { page = 1, limit = 50, userId = null } = options;
-  const skip = (page - 1) * limit;
+  const priceChangeText = negotiationData.priceChange
+    ? `${
+        negotiationData.priceChange.type === "increase"
+          ? "increased"
+          : negotiationData.priceChange.type === "decrease"
+          ? "decreased"
+          : "set"
+      } by ₹${negotiationData.priceChange.amount.toLocaleString()}`
+    : `set to ₹${negotiationData.proposedPrice.toLocaleString()}`;
 
-  const query = {
+  let content;
+  if (negotiationData.isCounterOffer) {
+    content = `🔄 **COUNTER OFFER**\n\nProposed price: ₹${negotiationData.proposedPrice.toLocaleString()}\n\n`;
+    if (negotiationData.timeline) {
+      content += `Timeline: ${negotiationData.timeline}\n`;
+    }
+    if (negotiationData.additionalTerms) {
+      content += `Additional Terms: ${negotiationData.additionalTerms}\n`;
+    }
+    content += `\nThis offer expires in 7 days.`;
+  } else {
+    content = `💰 **PRICE PROPOSAL**\n\nI would like to propose ₹${negotiationData.proposedPrice.toLocaleString()} for this project.\n\n`;
+    if (negotiationData.timeline) {
+      content += `Timeline: ${negotiationData.timeline}\n`;
+    }
+    if (negotiationData.additionalTerms) {
+      content += `Additional Terms: ${negotiationData.additionalTerms}\n`;
+    }
+    content += `\nThis offer expires in 7 days.`;
+  }
+
+  const message = new this({
     conversationId,
-    isDeleted: false,
-  };
-
-  return this.find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate("sender", "name image")
-    .populate("replyTo", "content sender type")
-    .lean();
-};
-
-MessageSchema.statics.getUnreadCount = function (conversationId, userId) {
-  return this.countDocuments({
-    conversationId,
-    sender: { $ne: userId },
-    "readBy.user": { $ne: userId },
-    isDeleted: false,
+    sender: senderId,
+    content,
+    type: "negotiation",
+    negotiationData: {
+      ...negotiationData,
+      negotiationId: negotiationData._id,
+    },
+    metadata: {
+      systemMessageType: negotiationData.isCounterOffer
+        ? "negotiation_countered"
+        : "negotiation_proposed",
+      isCounterOffer: negotiationData.isCounterOffer || false,
+      originalOfferId: negotiationData.originalOfferId,
+      counterOfferNumber: negotiationData.counterOfferNumber || 1,
+    },
+    priority: "urgent",
+    readBy: [
+      {
+        user: senderId,
+        readAt: new Date(),
+      },
+    ],
   });
+
+  return await message.save();
 };
 
-// Indexes
-MessageSchema.index({ conversationId: 1, createdAt: -1 });
-MessageSchema.index({ sender: 1, createdAt: -1 });
-MessageSchema.index({ conversationId: 1, "readBy.user": 1 });
-MessageSchema.index({ type: 1 });
-MessageSchema.index({ status: 1 });
-MessageSchema.index({ projectId: 1 });
-MessageSchema.index({ paymentId: 1 });
-MessageSchema.index({ isDeleted: 1, createdAt: -1 });
-MessageSchema.index({ replyTo: 1 });
+// Instance methods
+messageSchema.methods.softDelete = async function (deletedBy) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = deletedBy;
+  return await this.save();
+};
 
-export const Message = mongoose.model("Message", MessageSchema);
+messageSchema.methods.addReaction = async function (userId, emoji) {
+  const existingReaction = this.reactions.find(
+    (reaction) => reaction.user.toString() === userId.toString()
+  );
+
+  if (existingReaction) {
+    existingReaction.emoji = emoji;
+    existingReaction.reactedAt = new Date();
+  } else {
+    this.reactions.push({
+      user: userId,
+      emoji,
+      reactedAt: new Date(),
+    });
+  }
+
+  return await this.save();
+};
+
+messageSchema.methods.removeReaction = async function (userId) {
+  this.reactions = this.reactions.filter(
+    (reaction) => reaction.user.toString() !== userId.toString()
+  );
+  return await this.save();
+};
+
+messageSchema.methods.editContent = async function (
+  newContent,
+  editReason = ""
+) {
+  this.editHistory.push({
+    editedAt: new Date(),
+    originalContent: this.content,
+    editReason,
+  });
+
+  this.content = newContent;
+  return await this.save();
+};
+
+// Pre-save middleware
+messageSchema.pre("save", function (next) {
+  if (this.isNew) {
+    // Ensure sender is in readBy for their own messages
+    if (
+      this.sender &&
+      !this.readBy.some((read) => read.user.equals(this.sender))
+    ) {
+      this.readBy.push({
+        user: this.sender,
+        readAt: new Date(),
+      });
+    }
+
+    // Set system message flag
+    if (this.type === "system") {
+      this.isSystemMessage = true;
+    }
+  }
+  next();
+});
+
+// Post-save middleware to emit socket events
+messageSchema.post("save", async function (doc) {
+  try {
+    // Import here to avoid circular dependency
+    const { default: socketEventHandlers } = await import(
+      "../Sockets/messageHandlers.js"
+    );
+
+    if (socketEventHandlers && socketEventHandlers.emitNewMessage) {
+      socketEventHandlers.emitNewMessage(doc);
+    }
+  } catch (error) {
+    console.error("Error emitting message event:", error);
+  }
+});
+
+export const Message = mongoose.model("Message", messageSchema);

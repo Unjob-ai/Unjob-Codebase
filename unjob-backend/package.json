@@ -41,9 +41,12 @@
     "multer-s3": "^3.0.1",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
+    "pdfkit": "^0.17.2",
     "razorpay": "^2.9.6",
     "redis": "^5.8.2",
     "socket.io": "^4.8.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "xss-clean": "^0.1.4"
   },
   "devDependencies": {

@@ -1,84 +1,106 @@
-// routes/posts.js
-import  express  from "express"
-import  {
-  createPost,
+// routes/postRouter.js
+import express from "express";
+import {
   getAllPosts,
+  createPost,
   getPostById,
   updatePost,
   deletePost,
-  toggleLike,
+  likePost,
   addComment,
   deleteComment,
+  convertToPortfolio,
+  convertMultipleToPortfolio,
   getUserPosts,
-  getPortfolioPosts,
-  searchPosts,
-  getTrendingPosts,
+  reportPost,
 } from "../controllers/postsController.js";
 
-import  {
+import {
   validatePostCreation,
+  validatePostUpdate,
   validateComment,
   validateObjectId,
   validatePagination,
-  validateSearch,
-} from "../middleware/validationMiddleWare.js";
+  validatePortfolioConversion,
+  validateReportPost,
+} from "../middleware/validatePostMiddleware.js";
 
-import  { uploadConfigs } from "../middleware/uploadMiddleWare.js"
-import  { requireCompleteProfile } from "../middleware/authMiddleware.js"
-import  { postLimiter } from "../middleware/rateLimitMiddleWare.js"
+import {
+  requireCompleteProfile,
+  requireFreelancerOrHiring,
+} from "../middleware/authMiddleware.js";
+
+import { uploadConfigs } from "../middleware/uploadMiddleWare.js";
+
+import {
+  postLimiter,
+  commentLimiter,
+} from "../middleware/rateLimitMiddleWare.js";
 
 const router = express.Router();
 
-// Post CRUD operations
-router.post(
-  "/",
-  postLimiter,
-  requireCompleteProfile,
-  uploadConfigs.postImages,
-  validatePostCreation,
-  createPost
-);
+// Public routes - For viewing posts
 router.get("/", validatePagination, getAllPosts);
-router.get("/trending", validatePagination, getTrendingPosts);
-router.get("/portfolio", validatePagination, getPortfolioPosts);
-router.get("/search", validatePagination, validateSearch, searchPosts);
+router.get("/:id", validateObjectId(), getPostById);
+
+// User-specific routes
 router.get(
   "/user/:userId",
   validateObjectId("userId"),
   validatePagination,
   getUserPosts
 );
-router.get("/:id", validateObjectId(), getPostById);
-router.put(
-  "/:id",
-  requireCompleteProfile,
+
+// Protected routes
+router.use(requireCompleteProfile);
+
+// Post CRUD operations - using postImages for file uploads
+router.post(
+  "/",
+  postLimiter,
   uploadConfigs.postImages,
   validatePostCreation,
+  createPost
+);
+
+router.patch(
+  "/:id",
   validateObjectId(),
+  uploadConfigs.postImages,
+  validatePostUpdate,
   updatePost
 );
-router.delete("/:id", requireCompleteProfile, validateObjectId(), deletePost);
+
+router.delete("/:id", validateObjectId(), deletePost);
 
 // Post interactions
-router.post(
-  "/:id/like",
-  requireCompleteProfile,
-  validateObjectId(),
-  toggleLike
-);
+router.post("/:id/like", validateObjectId(), likePost);
+
 router.post(
   "/:id/comments",
-  requireCompleteProfile,
-  validateComment,
+  commentLimiter,
   validateObjectId(),
+  validateComment,
   addComment
 );
-router.delete(
-  "/:id/comments/:commentId",
-  requireCompleteProfile,
+
+router.delete("/:id/comments", validateObjectId(), deleteComment);
+
+// Portfolio conversions
+router.post(
+  "/:id/convert-to-portfolio",
   validateObjectId(),
-  validateObjectId("commentId"),
-  deleteComment
+  validatePortfolioConversion,
+  convertToPortfolio
 );
+
+router.post(
+  "/convert-multiple-to-portfolio",
+  validatePortfolioConversion,
+  convertMultipleToPortfolio
+);
+
+// Report post
+router.post("/report", validateReportPost, reportPost);
 
 export default router;

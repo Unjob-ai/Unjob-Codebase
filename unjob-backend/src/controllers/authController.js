@@ -37,9 +37,17 @@ const sendTokenResponse = async (user, statusCode, res, message) => {
   const userResponse = user.toObject();
   delete userResponse.password;
   res.setHeader("Authorization", `Bearer ${accessToken}`);
-  res
-    .status(statusCode)
-    .json(new apiResponse(statusCode, true, userResponse, message));
+  res.status(statusCode).json(
+    new apiResponse(
+      statusCode,
+      true,
+      {
+        user: userResponse,
+        token: accessToken,
+      },
+      message
+    )
+  );
 };
 
 // Send admin token response
@@ -50,9 +58,17 @@ const sendAdminTokenResponse = (admin, statusCode, res, message) => {
   const adminResponse = admin.toObject();
   delete adminResponse.password;
   res.setHeader("Authorization", `Bearer ${token}`);
-  res
-    .status(statusCode)
-    .json(new apiResponse(statusCode, true, adminResponse, message));
+  res.status(statusCode).json(
+    new apiResponse(
+      statusCode,
+      true,
+      {
+        user: adminResponse,
+        token: token,
+      },
+      message
+    )
+  );
 };
 
 // @desc    Register a new user

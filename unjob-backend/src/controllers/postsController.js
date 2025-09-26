@@ -1,29 +1,110 @@
 // controllers/postController.js
-import {Post} from "../models/PostModel.js"
-import {User} from "../models/UserModel.js"
-import { AppError, catchAsync }  from "../middleware/errorHandler.js"
-import asyncHandler from "../utils/asyncHandler.js"
+import { Post } from "../models/PostModel.js";
+import { User } from "../models/UserModel.js";
+import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
-// @desc    Create a new post
+import notificationService from "../services/notificationService.js";
+
+// @desc    Get all posts with filtering and pagination
+// @route   GET /api/posts
+// @access  Private
+export const getAllPosts = asyncHandler(async (req, res, next) => {
+  const {
+    page = 1,
+    limit = 50,
+    category,
+    subCategory,
+    userId,
+    postType = "post",
+    sort = "-createdAt",
+  } = req.query;
+
+  const skip = (page - 1) * limit;
+
+  let query = {
+    postType,
+    isActive: true,
+    isDeleted: false,
+  };
+
+  if (userId) query.author = userId;
+  if (category) query.category = category;
+  if (subCategory) query.subCategory = subCategory;
+
+  const posts = await Post.find(query)
+    .populate("author", "name image role profile")
+    .populate("comments.user", "name image")
+    .populate("likes.user", "name image")
+    .sort(sort)
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  const totalPosts = await Post.countDocuments(query);
+
+  // Add user interaction data if user is authenticated
+  let postsWithInteractions = posts;
+  if (req.user) {
+    postsWithInteractions = posts.map((post) => {
+      const postObj = post.toObject();
+      postObj.isLiked = post.likes.some(
+        (like) => like.user.toString() === req.user._id.toString()
+      );
+      return postObj;
+    });
+  }
+
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        posts: postsWithInteractions,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPosts / limit),
+          totalPosts,
+          hasNext: page < Math.ceil(totalPosts / limit),
+          hasPrev: page > 1,
+        },
+      },
+      "Posts fetched successfully"
+    )
+  );
+});
+
+// @desc    Create new post
 // @route   POST /api/posts
 // @access  Private
-const createPost = asyncHandler(async (req, res, next) => {
+export const createPost = asyncHandler(async (req, res, next) => {
   const {
     title,
     description,
     category,
     subCategory,
+    images,
+    videos,
     tags,
     project,
-    postType,
+    postType = "post",
     portfolioData,
   } = req.body;
 
+  // Validate required fields
+  if (!title || !description || !category || !subCategory) {
+    throw new apiError(
+      "Title, description, category, and subCategory are required",
+      400
+    );
+  }
+
   // Handle uploaded images
-  let images = [];
+  let finalImages = images || [];
   if (req.files && req.files.length > 0) {
-    images = req.files.map((file) => file.path || file.secure_url);
+    const uploadedImages = req.files.map(
+      (file) => file.path || file.secure_url
+    );
+    finalImages = [...finalImages, ...uploadedImages];
   }
 
   const postData = {
@@ -31,10 +112,11 @@ const createPost = asyncHandler(async (req, res, next) => {
     description,
     category,
     subCategory,
+    images: finalImages,
+    videos: videos || [],
     tags: tags || [],
     project: project || "",
-    postType: postType || "post",
-    images,
+    postType,
     author: req.user._id,
   };
 
@@ -53,122 +135,64 @@ const createPost = asyncHandler(async (req, res, next) => {
     $inc: { "stats.postsCount": 1 },
   });
 
-  // Populate author info
-  await post.populate("author", "name image role");
+  // Populate and return
+  await post.populate("author", "name image role profile");
 
-  res.status(201).json(new apiResponse(201, true, post, "Post created successfully"));
+  res
+    .status(201)
+    .json(new apiResponse(201, true, post, "Post created successfully"));
 });
 
-// @desc    Get all posts with pagination and filters
-// @route   GET /api/posts
-// @access  Private
-const getAllPosts = asyncHandler(async (req, res, next) => {
-  const {
-    page = 1,
-    limit = 10,
-    category,
-    subCategory,
-    postType,
-    author,
-    tags,
-    sort = "-createdAt",
-  } = req.query;
-
-  const skip = (page - 1) * limit;
-
-  // Build filter query
-  const filterQuery = {
-    isActive: true,
-    isDeleted: false,
-  };
-
-  if (category) filterQuery.category = category;
-  if (subCategory) filterQuery.subCategory = subCategory;
-  if (postType) filterQuery.postType = postType;
-  if (author) filterQuery.author = author;
-  if (tags) {
-    const tagsArray = tags.split(",");
-    filterQuery.tags = { $in: tagsArray };
-  }
-
-  const posts = await Post.find(filterQuery)
-    .populate("author", "name image role profile.companyName")
-    .populate("comments.user", "name image")
-    .sort(sort)
-    .skip(skip)
-    .limit(parseInt(limit));
-
-  const totalPosts = await Post.countDocuments(filterQuery);
-
-  // Add user interaction data
-  const postsWithInteractions = posts.map((post) => {
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (like) => like.user.toString() === req.user._id.toString()
-    );
-    return postObj;
-  });
-
-  res.status(200).json(new apiResponse(200, true, {
-    posts: postsWithInteractions,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPosts / limit),
-      totalPosts,
-      hasNext: page < Math.ceil(totalPosts / limit),
-      hasPrev: page > 1,
-    },
-  }, "Posts fetched successfully"));
-});
-
-// @desc    Get post by ID
+// @desc    Get single post by ID
 // @route   GET /api/posts/:id
 // @access  Private
-const getPostById = asyncHandler(async (req, res, next) => {
-  const post = await Post.findById(req.params.id)
-    .populate("author", "name image role profile.companyName profile.bio")
-    .populate("comments.user", "name image role")
-    .populate("likes.user", "name image");
+export const getPostById = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
 
-  if (!post || !post.isActive || post.isDeleted) {
+  const post = await Post.findById(id)
+    .populate("author", "name image role profile")
+    .populate("likes.user", "name image")
+    .populate("comments.user", "name image");
+
+  if (!post || post.isDeleted || !post.isActive) {
     throw new apiError("Post not found", 404);
   }
 
   // Increment view count
-  await post.incrementViews();
+  post.viewsCount = (post.viewsCount || 0) + 1;
+  await post.save();
 
   // Check if user has liked the post
-  const isLiked = post.likes.some(
-    (like) => like.user._id.toString() === req.user._id.toString()
-  );
-const data= {
-      ...post.toObject(),
-      isLiked
-    }
-  res.status(200).json(new apiResponse(200, true, data, "Post fetched successfully"));
+  let isLiked = false;
+  if (req.user) {
+    isLiked = post.likes.some(
+      (like) => like.user._id.toString() === req.user._id.toString()
+    );
+  }
+
+  const postData = {
+    ...post.toObject(),
+    isLiked,
+  };
+
+  res
+    .status(200)
+    .json(new apiResponse(200, true, postData, "Post fetched successfully"));
 });
 
 // @desc    Update post
-// @route   PUT /api/posts/:id
+// @route   PATCH /api/posts/:id
 // @access  Private
-const updatePost = asyncHandler(async (req, res, next) => {
-  const {
-    title,
-    description,
-    category,
-    subCategory,
-    tags,
-    project,
-    portfolioData,
-  } = req.body;
+export const updatePost = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const updates = req.body;
 
-  const post = await Post.findById(req.params.id);
-
-  if (!post) {
+  const post = await Post.findById(id);
+  if (!post || post.isDeleted) {
     throw new apiError("Post not found", 404);
   }
 
-  // Check if user owns the post
+  // Check authorization
   if (post.author.toString() !== req.user._id.toString()) {
     throw new apiError("Not authorized to update this post", 403);
   }
@@ -179,376 +203,754 @@ const updatePost = asyncHandler(async (req, res, next) => {
     newImages = req.files.map((file) => file.path || file.secure_url);
   }
 
-  // Update post fields
-  post.title = title || post.title;
-  post.description = description || post.description;
-  post.category = category || post.category;
-  post.subCategory = subCategory || post.subCategory;
-  post.tags = tags || post.tags;
-  post.project = project || post.project;
+  // Update allowed fields
+  const allowedFields = [
+    "title",
+    "description",
+    "category",
+    "subCategory",
+    "tags",
+    "project",
+    "portfolioData",
+  ];
+  allowedFields.forEach((field) => {
+    if (updates[field] !== undefined) {
+      post[field] = updates[field];
+    }
+  });
 
   // Add new images to existing ones
   if (newImages.length > 0) {
-    post.images = [...post.images, ...newImages];
+    post.images = [...(post.images || []), ...newImages];
   }
 
   // Update portfolio data if provided
-  if (portfolioData && post.postType === "portfolio") {
-    post.portfolioData = { ...post.portfolioData, ...portfolioData };
+  if (updates.portfolioData && post.postType === "portfolio") {
+    post.portfolioData = {
+      ...(post.portfolioData || {}),
+      ...updates.portfolioData,
+    };
   }
 
   await post.save();
 
-  await post.populate("author", "name image role");
+  const updatedPost = await Post.findById(post._id).populate(
+    "author",
+    "name image role profile"
+  );
 
-  res.status(200).json(new apiResponse(200, true, post, "Post updated successfully"));
+  res
+    .status(200)
+    .json(new apiResponse(200, true, updatedPost, "Post updated successfully"));
 });
 
 // @desc    Delete post
 // @route   DELETE /api/posts/:id
 // @access  Private
-const deletePost = asyncHandler(async (req, res, next) => {
-  const post = await Post.findById(req.params.id);
-  if (!post) {
+export const deletePost = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  const post = await Post.findById(id);
+  if (!post || post.isDeleted) {
     throw new apiError("Post not found", 404);
   }
 
-  // Ensure post.author is compared correctly
-  const postAuthorId = post.author._id ? post.author._id.toString() : post.author.toString();
+  // Check authorization
+  const postAuthorId = post.author._id
+    ? post.author._id.toString()
+    : post.author.toString();
   if (postAuthorId !== req.user._id.toString()) {
     throw new apiError("Not authorized to delete this post", 403);
   }
 
-  // Hard delete: remove the post document from the collection
-  await Post.deleteOne({ _id: post._id });
+  // Soft delete
+  post.isDeleted = true;
+  post.deletedAt = new Date();
+  await post.save();
 
-  // Update user stats only if field exists
+  // Update user stats
   await User.findByIdAndUpdate(req.user._id, {
     $inc: { "stats.postsCount": -1 },
-  }, { new: true, strict: false });
+  });
 
-  res.status(200).json(new apiResponse(200, true, {}, "Post deleted successfully"));
+  res
+    .status(200)
+    .json(new apiResponse(200, true, {}, "Post deleted successfully"));
 });
 
-
-// @desc    Like/Unlike a post
+// @desc    Like/Unlike post
 // @route   POST /api/posts/:id/like
 // @access  Private
-const toggleLike = asyncHandler(async (req, res, next) => {
-  const post = await Post.findById(req.params.id);
+export const likePost = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
 
-  if (!post || !post.isActive || post.isDeleted) {
+  const post = await Post.findById(id)
+    .populate("likes.user")
+    .populate("author", "name image email");
+
+  if (!post || post.isDeleted || !post.isActive) {
     throw new apiError("Post not found", 404);
   }
 
-  const userId = req.user._id;
+  const currentUser = await User.findById(req.user._id);
+  if (!currentUser) {
+    throw new apiError("User not found", 404);
+  }
+
+  const currentUserId = currentUser._id.toString();
   const existingLike = post.likes.find(
-    (like) => like.user.toString() === userId.toString()
+    (like) => like.user._id.toString() === currentUserId
   );
 
   let message;
+  let isLiked;
 
   if (existingLike) {
     // Unlike the post
-    await post.removeLike(userId);
+    post.likes = post.likes.filter(
+      (like) => like.user._id.toString() !== currentUserId
+    );
     message = "Post unliked successfully";
+    isLiked = false;
   } else {
     // Like the post
-    await post.addLike(userId);
+    post.likes.push({ user: currentUserId });
     message = "Post liked successfully";
+    isLiked = true;
+
+    // Create notification for post like (if not own post)
+    if (post.author._id.toString() !== currentUserId) {
+      try {
+        const postOwner = await User.findById(post.author._id);
+        await notificationService.notifyPostLike(
+          post.author._id,
+          currentUser,
+          post._id,
+          post.title || post.description?.substring(0, 50) || "their post",
+          postOwner
+        );
+      } catch (notificationError) {
+        console.error("Failed to create like notification:", notificationError);
+        // Don't fail the like action if notification fails
+      }
+    }
   }
 
-  res.status(200).json(new apiResponse(200, true, {
-    message,
-    likesCount: post.likesCount,
-    isLiked: !existingLike,
-  }, "Post liked/unliked successfully"));
+  // Update likes count
+  post.likesCount = post.likes.length;
+  await post.save();
+
+  // Re-populate the post
+  const updatedPost = await Post.findById(post._id)
+    .populate("author", "name image role profile")
+    .populate("comments.user", "name image")
+    .populate("likes.user", "name image");
+
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        liked: isLiked,
+        post: updatedPost,
+        message,
+        likesCount: post.likesCount,
+      },
+      "Like status updated successfully"
+    )
+  );
 });
 
 // @desc    Add comment to post
 // @route   POST /api/posts/:id/comments
 // @access  Private
-const addComment = asyncHandler(async (req, res, next) => {
+export const addComment = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
   const { content } = req.body;
 
-  if (!content || content.trim().length === 0) {
-    throw new apiError("Comment content is required", 400);
+  if (!content || typeof content !== "string" || content.trim().length === 0) {
+    throw new apiError("Comment text is required", 400);
   }
 
-  const post = await Post.findById(req.params.id);
+  if (content.length > 1000) {
+    throw new apiError("Comment is too long (max 1000 characters)", 400);
+  }
 
-  if (!post || !post.isActive || post.isDeleted) {
+  const post = await Post.findById(id).populate("author", "name image email");
+  if (!post || post.isDeleted || !post.isActive) {
     throw new apiError("Post not found", 404);
   }
 
-  await post.addComment(req.user._id, content.trim());
+  const currentUser = await User.findById(req.user._id);
+  if (!currentUser) {
+    throw new apiError("User not found", 404);
+  }
 
-  // Populate the new comment
-  await post.populate("comments.user", "name image role");
+  // Create comment
+  const newComment = {
+    user: currentUser._id,
+    content: content.trim(),
+    createdAt: new Date(),
+  };
 
-  const newComment = post.comments[post.comments.length - 1];
+  post.comments.push(newComment);
+  post.commentsCount = post.comments.length;
+  await post.save();
 
-  res.status(201).json(new apiResponse(201, true, {
-    comment: newComment,
-    commentsCount: post.commentsCount
-  }, "Comment added successfully"));
+  // Create notification for comment (if not own post)
+  if (post.author._id.toString() !== currentUser._id.toString()) {
+    try {
+      await notificationService.notifyPostComment(
+        post.author._id,
+        currentUser,
+        post._id,
+        post.title || post.description?.substring(0, 50) || "their post",
+        content.trim()
+      );
+    } catch (notificationError) {
+      console.error(
+        "Failed to create comment notification:",
+        notificationError
+      );
+      // Don't fail the comment action if notification fails
+    }
+  }
+
+  // Re-populate the post
+  const updatedPost = await Post.findById(post._id)
+    .populate("author", "name image role profile")
+    .populate("comments.user", "name image")
+    .populate("likes.user", "name image");
+
+  res.status(201).json(
+    new apiResponse(
+      201,
+      true,
+      {
+        post: updatedPost,
+        comment: {
+          ...newComment,
+          user: {
+            _id: currentUser._id,
+            name: currentUser.name,
+            image: currentUser.image,
+          },
+        },
+      },
+      "Comment added successfully"
+    )
+  );
 });
 
 // @desc    Delete comment
-// @route   DELETE /api/posts/:id/comments/:commentId
+// @route   DELETE /api/posts/:id/comments
 // @access  Private
-const deleteComment = asyncHandler(async (req, res, next) => {
-  const { id: postId, commentId } = req.params;
+export const deleteComment = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { commentId } = req.query;
 
-  const post = await Post.findById(postId);
-
-  if (!post) {
-    throw new apiError("Post not found", 404)
+  if (!commentId) {
+    throw new apiError("Comment ID is required", 400);
   }
 
-  const comment = post.comments.find(
-    (c) => c._id.toString() === commentId.toString()
+  const post = await Post.findById(id);
+  if (!post || post.isDeleted) {
+    throw new apiError("Post not found", 404);
+  }
+
+  const currentUser = await User.findById(req.user._id);
+  if (!currentUser) {
+    throw new apiError("User not found", 404);
+  }
+
+  // Find the comment
+  const commentIndex = post.comments.findIndex(
+    (comment) => comment._id.toString() === commentId
   );
 
-  if (!comment) {
+  if (commentIndex === -1) {
     throw new apiError("Comment not found", 404);
   }
 
-  // Check if user owns the comment or is the post author
-  if (
-    comment.user.toString() !== req.user._id.toString() &&
-    post.author.toString() !== req.user._id.toString()
-  ) {
-    throw new apiError("Not authorized to delete this comment", 403);
+  const comment = post.comments[commentIndex];
+
+  // Check permissions - comment owner or post owner can delete
+  const isCommentOwner = comment.user.toString() === currentUser._id.toString();
+  const isPostOwner = post.author.toString() === currentUser._id.toString();
+
+  if (!isCommentOwner && !isPostOwner) {
+    throw new apiError(
+      "You can only delete your own comments or comments on your posts",
+      403
+    );
   }
 
   // Remove the comment
-  post.comments = post.comments.filter(
-    (c) => c._id.toString() !== commentId.toString()
-  );
-
-  // Update comments count
+  post.comments.splice(commentIndex, 1);
   post.commentsCount = post.comments.length;
-
   await post.save();
 
-  res.status(200).json(new apiResponse(200, true, {}, "Comment deleted successfully"));
+  // Re-populate the post
+  const updatedPost = await Post.findById(post._id)
+    .populate("author", "name image role profile")
+    .populate("comments.user", "name image")
+    .populate("likes.user", "name image");
+
+  res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        true,
+        { post: updatedPost },
+        "Comment deleted successfully"
+      )
+    );
 });
 
+// @desc    Convert post to portfolio
+// @route   POST /api/posts/:id/convert-to-portfolio
+// @access  Private
+export const convertToPortfolio = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { projectTitle, postIds } = req.body;
 
-// @desc    Get user's posts
+  if (!projectTitle || !projectTitle.trim()) {
+    throw new apiError("Project title is required", 400);
+  }
+
+  if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+    throw new apiError("At least one post must be selected", 400);
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new apiError("User not found", 404);
+  }
+
+  // Find all selected posts
+  const posts = await Post.find({
+    _id: { $in: postIds },
+    author: user._id,
+    isDeleted: false,
+  });
+
+  if (posts.length !== postIds.length) {
+    throw new apiError("Some posts not found or unauthorized", 404);
+  }
+
+  // Check if any posts are already portfolio items
+  const alreadyPortfolio = posts.filter(
+    (post) => post.postType === "portfolio"
+  );
+  if (alreadyPortfolio.length > 0) {
+    throw new apiError(
+      `${alreadyPortfolio.length} post(s) are already portfolio items`,
+      400
+    );
+  }
+
+  const convertedPosts = [];
+
+  // Convert all posts to portfolio items
+  for (let post of posts) {
+    post.postType = "portfolio";
+    post.project = projectTitle.trim();
+
+    // Add portfolio-specific metadata
+    if (!post.portfolioData) {
+      post.portfolioData = {};
+    }
+
+    post.portfolioData.shortDescription =
+      post.description?.substring(0, 200) || "";
+    post.portfolioData.addedToPortfolioAt = new Date();
+
+    await post.save();
+    convertedPosts.push(post);
+  }
+
+  // Update user's profile portfolio array
+  if (!user.profile) {
+    user.profile = {};
+  }
+  if (!user.profile.portfolio) {
+    user.profile.portfolio = [];
+  }
+
+  const existingProjectIndex = user.profile.portfolio.findIndex(
+    (item) => item.title === projectTitle.trim()
+  );
+
+  if (existingProjectIndex >= 0) {
+    // Project exists, increment count
+    user.profile.portfolio[existingProjectIndex].postsCount =
+      (user.profile.portfolio[existingProjectIndex].postsCount || 0) +
+      posts.length;
+
+    // Update with latest image
+    const latestPostWithImage = posts.find(
+      (post) => post.images && post.images.length > 0
+    );
+    if (latestPostWithImage) {
+      user.profile.portfolio[existingProjectIndex].image =
+        latestPostWithImage.images[0];
+    }
+  } else {
+    // New project
+    const firstPostWithImage = posts.find(
+      (post) => post.images && post.images.length > 0
+    );
+    user.profile.portfolio.push({
+      title: projectTitle.trim(),
+      description: posts[0].portfolioData.shortDescription,
+      image: firstPostWithImage?.images[0] || "",
+      postsCount: posts.length,
+      createdAt: new Date(),
+    });
+  }
+
+  await user.save();
+
+  res.status(200).json(
+    new apiResponse(
+      200,
+      true,
+      {
+        portfolioItems: convertedPosts,
+        projectTitle: projectTitle.trim(),
+        convertedCount: posts.length,
+      },
+      `${posts.length} post(s) converted to portfolio project successfully!`
+    )
+  );
+});
+
+// @desc    Convert multiple posts to portfolio
+// @route   POST /api/posts/convert-multiple-to-portfolio
+// @access  Private
+export const convertMultipleToPortfolio = asyncHandler(
+  async (req, res, next) => {
+    const { projectTitle, postIds } = req.body;
+
+    if (!projectTitle || !projectTitle.trim()) {
+      throw new apiError("Project title is required", 400);
+    }
+
+    if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+      throw new apiError("At least one post must be selected", 400);
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      throw new apiError("User not found", 404);
+    }
+
+    // Find all selected posts
+    const posts = await Post.find({
+      _id: { $in: postIds },
+      author: user._id,
+      isDeleted: false,
+    });
+
+    if (posts.length !== postIds.length) {
+      throw new apiError("Some posts not found or unauthorized", 404);
+    }
+
+    // Check if any posts are already portfolio items
+    const alreadyPortfolio = posts.filter(
+      (post) => post.postType === "portfolio"
+    );
+    if (alreadyPortfolio.length > 0) {
+      throw new apiError(
+        `${alreadyPortfolio.length} post(s) are already portfolio items`,
+        400
+      );
+    }
+
+    const convertedPosts = [];
+
+    // Convert all posts to portfolio items
+    for (let post of posts) {
+      post.postType = "portfolio";
+      post.project = projectTitle.trim();
+
+      if (!post.portfolioData) {
+        post.portfolioData = {};
+      }
+
+      post.portfolioData.shortDescription =
+        post.description?.substring(0, 200) || "";
+      post.portfolioData.addedToPortfolioAt = new Date();
+
+      await post.save();
+      convertedPosts.push(post);
+    }
+
+    // Initialize user profile portfolio if needed
+    if (!user.profile) {
+      user.profile = {};
+    }
+    if (!user.profile.portfolio) {
+      user.profile.portfolio = [];
+    }
+
+    const existingProjectIndex = user.profile.portfolio.findIndex(
+      (item) => item.title === projectTitle.trim()
+    );
+
+    if (existingProjectIndex >= 0) {
+      // Project exists, increment count
+      user.profile.portfolio[existingProjectIndex].postsCount =
+        (user.profile.portfolio[existingProjectIndex].postsCount || 0) +
+        posts.length;
+
+      // Update with latest image
+      const latestPostWithImage = posts.find(
+        (post) => post.images && post.images.length > 0
+      );
+      if (latestPostWithImage) {
+        user.profile.portfolio[existingProjectIndex].image =
+          latestPostWithImage.images[0];
+      }
+    } else {
+      // New project
+      const firstPostWithImage = posts.find(
+        (post) => post.images && post.images.length > 0
+      );
+      const firstPost = posts[0];
+      const description =
+        firstPost.portfolioData?.shortDescription ||
+        firstPost.description?.substring(0, 200) ||
+        "Portfolio project";
+
+      user.profile.portfolio.push({
+        title: projectTitle.trim(),
+        description: description,
+        image: firstPostWithImage?.images[0] || "",
+        postsCount: posts.length,
+        createdAt: new Date(),
+      });
+    }
+
+    await user.save();
+
+    res.status(200).json(
+      new apiResponse(
+        200,
+        true,
+        {
+          portfolioItems: convertedPosts,
+          projectTitle: projectTitle.trim(),
+          convertedCount: posts.length,
+        },
+        `${posts.length} post(s) converted to portfolio project successfully!`
+      )
+    );
+  }
+);
+
+// @desc    Get user posts
 // @route   GET /api/posts/user/:userId
 // @access  Private
-const getUserPosts = asyncHandler(async (req, res, next) => {
+export const getUserPosts = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
-  const { page = 1, limit = 10, postType } = req.query;
+  const {
+    postType,
+    category,
+    subCategory,
+    project,
+    page = 1,
+    limit = 12,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+    includeStats = false,
+  } = req.query;
+
   const skip = (page - 1) * limit;
 
-  const filterQuery = {
+  // Verify user exists
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new apiError("User not found", 404);
+  }
+
+  // Build query
+  let query = {
     author: userId,
     isActive: true,
     isDeleted: false,
   };
 
-  if (postType) {
-    filterQuery.postType = postType;
+  if (postType) query.postType = postType;
+  if (category) query.category = category;
+  if (subCategory) query.subCategory = subCategory;
+  if (project) query.project = project;
+
+  // Build sort object
+  let sortObj = {};
+  if (sortBy === "likes") {
+    sortObj = { likesCount: sortOrder === "asc" ? 1 : -1 };
+  } else if (sortBy === "views") {
+    sortObj = { viewsCount: sortOrder === "asc" ? 1 : -1 };
+  } else if (sortBy === "comments") {
+    sortObj = { commentsCount: sortOrder === "asc" ? 1 : -1 };
+  } else {
+    sortObj[sortBy] = sortOrder === "asc" ? 1 : -1;
   }
 
-  const posts = await Post.find(filterQuery)
-    .populate("author", "name image role")
-    .sort("-createdAt")
+  // Fetch posts
+  const posts = await Post.find(query)
+    .sort(sortObj)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit))
+    .populate("author", "name image role profile stats")
+    .populate("comments.user", "name image role")
+    .populate("likes.user", "name image role");
 
-  const totalPosts = await Post.countDocuments(filterQuery);
+  const totalPosts = await Post.countDocuments(query);
 
   // Add user interaction data
-  const postsWithInteractions = posts.map((post) => {
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (like) => like.user.toString() === req.user._id.toString()
-    );
-    return postObj;
-  });
-
-  res.status(200).json(new apiResponse(200, true, {
-    posts: postsWithInteractions,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPosts / limit),
-      totalPosts,
-      hasNext: page < Math.ceil(totalPosts / limit),
-      hasPrev: page > 1,
-    }}, "User posts fetched successfully"))
-});
-
-// @desc    Get portfolio posts
-// @route   GET /api/posts/portfolio
-// @access  Private
-const getPortfolioPosts = asyncHandler(async (req, res, next) => {
-  const { page = 1, limit = 10, author, category, featured } = req.query;
-  const skip = (page - 1) * limit;
-
-  const filterQuery = {
-  postType: "portfolio",
-  isActive: true,
-  isDeleted: false,
-};
-
-  if (author) filterQuery.author = author;
-  if (category) filterQuery.category = category;
-  if (featured === "true") filterQuery["portfolioData.featured"] = true;
-
-  const posts = await Post.find(filterQuery)
-    .populate("author", "name image role profile.bio profile.companyName")
-    .sort("-createdAt")
-    .skip(skip)
-    .limit(parseInt(limit));
-
-  const totalPosts = await Post.countDocuments(filterQuery);
-
-  res.status(200).json(new apiResponse(200, true, {
-    portfolioPosts: posts,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPosts / limit),
-      totalPosts,
-      hasNext: page < Math.ceil(totalPosts / limit),
-      hasPrev: page > 1,
-    },
-  }, "Portfolio posts fetched successfully") );
-});
-
-// @desc    Search posts
-// @route   GET /api/posts/search
-// @access  Private
-const searchPosts = asyncHandler(async (req, res, next) => {
-  const { q, category, tags, author, page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
-
-  if (!q || q.trim().length === 0) {
-    throw new apiError("Search query is required", 400);
+  let postsWithInteractions = posts;
+  if (req.user) {
+    postsWithInteractions = posts.map((post) => {
+      const postObj = post.toObject();
+      postObj.isLiked = post.likes.some(
+        (like) => like.user.toString() === req.user._id.toString()
+      );
+      return postObj;
+    });
   }
 
-  const searchQuery = {
-    isActive: true,
-    isDeleted: false,
-    $or: [
-      { title: { $regex: q, $options: "i" } },
-      { description: { $regex: q, $options: "i" } },
-      { tags: { $in: [new RegExp(q, "i")] } },
-    ],
+  const response = {
+    user: {
+      _id: user._id,
+      name: user.name,
+      image: user.image,
+      role: user.role,
+      profile: user.profile,
+      stats: user.stats,
+    },
+    posts: postsWithInteractions,
+    pagination: {
+      total: totalPosts,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalPosts / limit),
+      hasNextPage: parseInt(page) < Math.ceil(totalPosts / limit),
+      hasPrevPage: parseInt(page) > 1,
+    },
+    filters: {
+      postType,
+      category,
+      subCategory,
+      project,
+      sortBy,
+      sortOrder,
+    },
   };
 
-  if (category) searchQuery.category = category;
-  if (author) searchQuery.author = author;
-  if (tags) {
-    const tagsArray = tags.split(",");
-    searchQuery.tags = { $in: tagsArray };
+  // Get additional stats if requested
+  if (includeStats === "true") {
+    const statsAggregation = await Post.aggregate([
+      { $match: { author: user._id, isActive: true, isDeleted: false } },
+      {
+        $group: {
+          _id: null,
+          totalPosts: { $sum: 1 },
+          totalLikes: { $sum: "$likesCount" },
+          totalViews: { $sum: "$viewsCount" },
+          totalComments: { $sum: "$commentsCount" },
+          portfolioPosts: {
+            $sum: { $cond: [{ $eq: ["$postType", "portfolio"] }, 1, 0] },
+          },
+          regularPosts: {
+            $sum: { $cond: [{ $eq: ["$postType", "post"] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const userStats = statsAggregation[0] || {
+      totalPosts: 0,
+      totalLikes: 0,
+      totalViews: 0,
+      totalComments: 0,
+      portfolioPosts: 0,
+      regularPosts: 0,
+    };
+
+    // Get category breakdown
+    const categoryStats = await Post.aggregate([
+      { $match: { author: user._id, isActive: true, isDeleted: false } },
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+          totalLikes: { $sum: "$likesCount" },
+          totalViews: { $sum: "$viewsCount" },
+        },
+      },
+      { $sort: { count: -1 } },
+    ]);
+
+    userStats.categoryBreakdown = categoryStats;
+    response.userStats = userStats;
   }
 
-  const posts = await Post.find(searchQuery)
-    .populate("author", "name image role")
-    .sort("-createdAt")
-    .skip(skip)
-    .limit(parseInt(limit));
+  // Get unique projects for portfolio items
+  if (postType === "portfolio" || !postType) {
+    const portfolioProjects = await Post.distinct("project", {
+      author: userId,
+      postType: "portfolio",
+      project: { $exists: true, $ne: null },
+      isDeleted: false,
+    });
 
-  const totalPosts = await Post.countDocuments(searchQuery);
+    if (portfolioProjects.length > 0) {
+      response.portfolioProjects = portfolioProjects;
+    }
+  }
 
-  // Add user interaction data
-  const postsWithInteractions = posts.map((post) => {
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (like) => like.user.toString() === req.user._id.toString()
+  res
+    .status(200)
+    .json(
+      new apiResponse(200, true, response, "User posts fetched successfully")
     );
-    return postObj;
-  });
-
-  res.status(200).json(new apiResponse(200, true, {
-    posts: postsWithInteractions,
-    searchQuery: q,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPosts / limit),
-      totalPosts,
-      hasNext: page < Math.ceil(totalPosts / limit),
-      hasPrev: page > 1,
-    },
-  }, "Search results fetched successfully"));
 });
 
-// @desc    Get trending posts
-// @route   GET /api/posts/trending
+// @desc    Report post
+// @route   POST /api/posts/report
 // @access  Private
-const getTrendingPosts = asyncHandler(async (req, res, next) => {
-  const { page = 1, limit = 10, timeframe = "7d" } = req.query;
-  const skip = (page - 1) * limit;
+export const reportPost = asyncHandler(async (req, res, next) => {
+  const { postId, reason, description } = req.body;
 
-  // Calculate date threshold based on timeframe
-  let dateThreshold;
-  switch (timeframe) {
-    case "24h":
-      dateThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      break;
-    case "7d":
-      dateThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      break;
-    case "30d":
-      dateThreshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      break;
-    default:
-      dateThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  if (!postId || !reason) {
+    throw new apiError("Post ID and reason are required", 400);
   }
 
-  const posts = await Post.find({
-    isActive: true,
-    isDeleted: false,
-    createdAt: { $gte: dateThreshold },
-  })
-    .populate("author", "name image role")
-    .sort("-likesCount -commentsCount -viewsCount -createdAt")
-    .skip(skip)
-    .limit(parseInt(limit));
+  const post = await Post.findById(postId);
+  if (!post || post.isDeleted || !post.isActive) {
+    throw new apiError("Post not found", 404);
+  }
 
-  const totalPosts = await Post.countDocuments({
-    isActive: true,
-    isDeleted: false,
-    createdAt: { $gte: dateThreshold },
+  // Initialize reported array if it doesn't exist
+  if (!post.reported) {
+    post.reported = [];
+  }
+
+  // Add report to the post
+  post.reported.push({
+    user: req.user?._id || "anonymous",
+    reason,
+    description: description || "",
+    status: "pending",
+    reportedAt: new Date(),
   });
 
-  // Add user interaction data
-  const postsWithInteractions = posts.map((post) => {
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (like) => like.user.toString() === req.user._id.toString()
-    );
-    return postObj;
-  });
+  await post.save();
 
-  res.status(200).json(new apiResponse(200, true, {
-    posts: postsWithInteractions,
-    timeframe,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(totalPosts / limit),
-      totalPosts,
-      hasNext: page < Math.ceil(totalPosts / limit),
-      hasPrev: page > 1,
-    },
-  }, "Trending posts fetched successfully"));
+  res
+    .status(200)
+    .json(new apiResponse(200, true, {}, "Post reported successfully"));
 });
-
-export {
-  createPost,
-  getAllPosts,
-  getPostById,
-  updatePost,
-  deletePost,
-  toggleLike,
-  addComment,
-  deleteComment,
-  getUserPosts,
-  getPortfolioPosts,
-  searchPosts,
-  getTrendingPosts,
-};

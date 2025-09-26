@@ -1,25 +1,30 @@
 // routes/index.js
-import  express  from "express";
-import { authMiddleware, adminAuthMiddleware } from "../middleware/authMiddleware.js"
+import express from "express";
+import {
+  authMiddleware,
+  adminAuthMiddleware,
+} from "../middleware/authMiddleware.js";
 
 // Import all route modules
 // Route imports
 import authRoutes from "./authRouter.js";
+import applicationRoutes from "./applicationRoutes.js";
 import userRoutes from "./userRouter.js";
 import postRoutes from "./postRouter.js";
 import gigRoutes from "./gigsRouter.js";
 import messageRoutes from "./messagesRouter.js";
-import conversationRoutes from "./conversationsRouter.js";
 import notificationRoutes from "./notificationsRouter.js";
 import projectRoutes from "./projectsRouter.js";
 import paymentRoutes from "./paymentRouter.js";
 import freelancerRoutes from "./freelancerRouter.js";
 import adminRoutes from "./adminRouter.js";
+import subscriptionRoutes from "./subscriptionRoutes.js";
 
 // Model imports
-import {User} from "../models/UserModel.js";
-import {Gig} from "../models/GigModel.js";
-import {Post} from "../models/PostModel.js";
+import { User } from "../models/UserModel.js";
+import { Gig } from "../models/GigModel.js";
+import { Post } from "../models/PostModel.js";
+import { conversationRouter } from "./conversationsRouter.js";
 
 const router = express.Router();
 
@@ -52,6 +57,8 @@ router.get("/", (req, res) => {
       payments: "/api/payments",
       freelancer: "/api/freelancer",
       admin: "/api/admin",
+      applications: "/api/applications",
+      subscription: "/api/subscription",
     },
   });
 });
@@ -62,18 +69,18 @@ router.use("/user", authMiddleware, userRoutes);
 router.use("/posts", authMiddleware, postRoutes);
 router.use("/gigs", authMiddleware, gigRoutes);
 router.use("/messages", authMiddleware, messageRoutes);
-router.use("/conversations", authMiddleware, conversationRoutes);
+router.use("/conversations", authMiddleware, conversationRouter);
 router.use("/notifications", authMiddleware, notificationRoutes);
 router.use("/projects", authMiddleware, projectRoutes);
 router.use("/payments", authMiddleware, paymentRoutes);
 router.use("/freelancer", authMiddleware, freelancerRoutes);
 router.use("/admin", adminRoutes);
+router.use("/applications", applicationRoutes);
+router.use("/subscription", subscriptionRoutes);
 
 // API Statistics (public)
 router.get("/stats", async (req, res) => {
   try {
-    
-
     const stats = await Promise.all([
       User.countDocuments({ role: "freelancer", isActive: true }),
       User.countDocuments({ role: "hiring", isActive: true }),

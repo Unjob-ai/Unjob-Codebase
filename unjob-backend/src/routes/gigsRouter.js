@@ -1,93 +1,101 @@
-// routes/gigs.js
-import  express  from "express"
-import  {
+// routes/gigRoutes.js
+import express from "express";
+import {
   createGig,
-  getAllGigs,
+  getGigs,
   getGigById,
-  applyToGig,
-  getGigApplications,
-  updateApplicationStatus,
   updateGig,
   deleteGig,
-  searchGigs,
-  getCompanyGigs,
-  getMyApplications,
-  getGigCategories,
-  getGigStats,
-  getFeaturedGigs,
-} from "../controllers/gigController.js"
-
-import  {
-  validateGigCreation,
-  validateGigApplication,
-  validateObjectId,
-  validatePagination,
-  validateSearch,
-}  from "../middleware/validationMiddleWare.js"
-
-import  {
-  requireCompleteProfile,
+  getGigForEdit,
+  getGigApplications,
+  getUserGigStats,
+} from "../controllers/gigController.js";
+import {
+  authMiddleware as protect,
   requireHiring,
-  requireFreelancer,
-  requireFreelancerOrHiring,
-}  from "../middleware/authMiddleware.js"
-
-import  { gigLimiter, applicationLimiter } from "../middleware/rateLimitMiddleWare.js"
+  optionalAuth,
+} from "../middleware/authMiddleware.js";
+import {
+  uploadConfigs,
+  validateFiles,
+  processImages,
+  handleUploadError,
+  uploadToCloudMiddleware,
+} from "../middleware/uploadMiddleWare.js";
+import {
+  validateCreateGig,
+  validateUpdateGig,
+  validateGigQuery,
+  validateGigId,
+} from "../middleware/validationGigsMiddleware.js";
 
 const router = express.Router();
 
-// Public/General routes
-router.get("/", validatePagination, getAllGigs);
-router.get("/featured", validatePagination, getFeaturedGigs);
-router.get("/categories", getGigCategories);
-router.get("/stats", getGigStats);
-router.get("/search", validatePagination, validateSearch, searchGigs);
+// Public routes
+router.get("/", ...validateGigQuery, optionalAuth, getGigs);
+router.get("/:id", ...validateGigId, optionalAuth, getGigById);
 
-// Company-specific routes (Hiring role required)
+// Protected routes - all routes below require authentication
+router.use(protect);
+
+// Gig management routes (hiring users only)
 router.post(
-  "/",
-  gigLimiter,
+  "/create",
   requireHiring,
-  requireCompleteProfile,
-  validateGigCreation,
-  createGig
+  uploadConfigs.fields([
+    { name: "bannerImage", maxCount: 1 },
+    { name: "assetFiles", maxCount: 10 },
+  ]),
+  validateFiles(
+    [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "application/pdf",
+      "application/msword",
+    ],
+    25 * 1024 * 1024 // 25MB max
+  ),
+  processImages,
+  uploadToCloudMiddleware("gigs"),
+  ...validateCreateGig,
+  createGig,
+  handleUploadError
 );
-router.get("/company", requireHiring, validatePagination, getCompanyGigs);
-router.get(
-  "/:id/applications",
-  requireHiring,
-  validateObjectId(),
-  validatePagination,
-  getGigApplications
-);
+
+router.get("/user-stats", requireHiring, getUserGigStats);
+
+router.get("/:id/edit", ...validateGigId, requireHiring, getGigForEdit);
+
+router.get("/:id/manage", ...validateGigId, requireHiring, getGigApplications);
+
 router.put(
-  "/:id/applications/:applicationId",
-  requireHiring,
-  validateObjectId(),
-  validateObjectId("applicationId"),
-  updateApplicationStatus
+  "/:id",
+  ...validateGigId,
+  requireHiring, // <-- Changed
+  uploadConfigs.fields([
+    { name: "bannerImage", maxCount: 1 },
+    { name: "newAssetFiles", maxCount: 10 },
+  ]),
+  validateFiles(
+    [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "application/pdf",
+      "application/msword",
+    ],
+    25 * 1024 * 1024 // 25MB max
+  ),
+  processImages,
+  uploadToCloudMiddleware("gigs"),
+  ...validateUpdateGig,
+  updateGig,
+  handleUploadError
 );
-router.put("/:id", requireHiring, validateObjectId(), updateGig);
-router.delete("/:id", requireHiring, validateObjectId(), deleteGig);
 
-// Freelancer-specific routes
-router.post(
-  "/:id/apply",
-  applicationLimiter,
-  requireFreelancer,
-  requireCompleteProfile,
-  validateGigApplication,
-  validateObjectId(),
-  applyToGig
-);
-router.get(
-  "/my-applications",
-  requireFreelancer,
-  validatePagination,
-  getMyApplications
-);
-
-// Routes accessible by both roles
-router.get("/:id", requireFreelancerOrHiring, validateObjectId(), getGigById);
+router.delete("/:id", ...validateGigId, requireHiring, deleteGig);
 
 export default router;
