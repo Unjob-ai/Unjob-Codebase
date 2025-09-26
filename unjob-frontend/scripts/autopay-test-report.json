@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-09-16T13:19:01.865Z",
+  "environment": "development",
+  "capabilities": {
+    "plansSupported": true,
+    "subscriptionsSupported": true,
+    "testPlanId": "plan_RIHr6qbOkNQp7w",
+    "testSubscriptionId": "sub_RIHr7d0y3thqKn"
+  },
+  "createdPlans": {
+    "FREELANCER_MONTHLY": "plan_RIHrARx6N53ijf",
+    "HIRING_MONTHLY": "plan_RIHrC7hao1aMjU",
+    "HIRING_PRO_MONTHLY": "plan_RIHrDl0m1zQ4hZ"
+  },
+  "testSubscriptions": [],
+  "errors": [
+    "upi autopay test: undefined",
+    "card autopay test: undefined",
+    "netbanking autopay test: undefined"
+  ],
+  "recommendations": [],
+  "summary": {
+    "totalTests": 3,
+    "passedTests": 0,
+    "failedTests": 3,
+    "plansCreated": 3,
+    "subscriptionsCreated": 0
+  }
+}
