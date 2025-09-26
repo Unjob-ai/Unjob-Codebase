@@ -82,8 +82,7 @@ const usersToAssignHiringMonthly = [
 ];
 
 async function assignHiringMonthlyPlans() {
-  const MONGO_URI =
-    "mongodb+srv://unjobai:UnjobAI12345678Dev@cluster0.fd5jyk9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  const MONGO_URI = process.env.MONGO_URI;
 
   try {
     console.log("🚀 Starting Hiring monthly plan assignment...");
