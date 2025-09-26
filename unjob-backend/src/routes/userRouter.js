@@ -22,7 +22,7 @@ import {
   validateSearch,
 } from "../middleware/validationMiddleWare.js"
 
-import  { uploadConfigs }  from "../middleware/uploadMiddleWare.js"
+import  { uploadConfigs }  from "../middleware/uploadToS3Middleware.js"
 import  { requireCompleteProfile, requireActive } from "../middleware/authMiddleware.js"
 
 const router = express.Router();

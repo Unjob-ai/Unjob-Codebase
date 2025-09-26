@@ -3,7 +3,7 @@ import { User } from "../models/UserModel.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
-import { deleteFileFromS3 } from "../middleware/uploadMiddleWare.js";
+import { deleteFileFromS3 } from "../middleware/uploadToS3Middleware.js";
 // @desc    Get current user profile
 // @route   GET /api/user/profile
 // @access  Private
