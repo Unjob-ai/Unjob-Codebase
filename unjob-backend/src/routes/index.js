@@ -13,7 +13,6 @@ import userRoutes from "./userRouter.js";
 import postRoutes from "./postRouter.js";
 import gigRoutes from "./gigsRouter.js";
 import messageRoutes from "./messagesRouter.js";
-import conversationRoutes from "./conversationsRouter.js";
 import notificationRoutes from "./notificationsRouter.js";
 import projectRoutes from "./projectsRouter.js";
 import paymentRoutes from "./paymentRouter.js";
@@ -25,6 +24,7 @@ import subscriptionRoutes from "./subscriptionRoutes.js";
 import { User } from "../models/UserModel.js";
 import { Gig } from "../models/GigModel.js";
 import { Post } from "../models/PostModel.js";
+import { conversationRouter } from "./conversationsRouter.js";
 
 const router = express.Router();
 
@@ -69,7 +69,7 @@ router.use("/user", authMiddleware, userRoutes);
 router.use("/posts", authMiddleware, postRoutes);
 router.use("/gigs", authMiddleware, gigRoutes);
 router.use("/messages", authMiddleware, messageRoutes);
-router.use("/conversations", authMiddleware, conversationRoutes);
+router.use("/conversations", authMiddleware, conversationRouter);
 router.use("/notifications", authMiddleware, notificationRoutes);
 router.use("/projects", authMiddleware, projectRoutes);
 router.use("/payments", authMiddleware, paymentRoutes);
