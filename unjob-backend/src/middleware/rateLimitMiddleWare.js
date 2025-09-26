@@ -66,7 +66,7 @@ const registerLimiter = createRateLimiter({
   },
 });
 
-// Password reset rate limiter
+//---------------------- Password reset rate limiter---------------------------//
 const passwordResetLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3,
@@ -76,7 +76,7 @@ const passwordResetLimiter = createRateLimiter({
   },
 });
 
-// File upload rate limiter
+//------------------------ File upload rate limiter-----------------//
 const uploadLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,

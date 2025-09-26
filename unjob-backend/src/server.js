@@ -1,6 +1,5 @@
 // server.js - Fixed environment loading order
 import dotenv from "dotenv";
-
 // CRITICAL: Load environment variables FIRST before any other imports
 dotenv.config();
 
