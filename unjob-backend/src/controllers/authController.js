@@ -120,7 +120,6 @@ const register = asyncHandler(async (req, res) => {
 // @access  Public
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
-
   // Find user by email and include password
   const user = await User.findOne({ email });
   if (!user) {

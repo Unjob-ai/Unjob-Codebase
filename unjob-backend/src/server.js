@@ -1,6 +1,5 @@
 // server.js - Fixed environment loading order
 import dotenv from "dotenv";
-
 dotenv.config();
 
 // Now import everything else - this ensures all modules have access to env vars
