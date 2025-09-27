@@ -18,7 +18,7 @@ import {
   validatePagination,
 } from "../middleware/validationMiddleWare.js";
 
-import { uploadConfigs } from "../middleware/uploadMiddleWare.js";
+import { uploadConfigs } from "../middleware/uploadToS3Middleware.js";
 import { requireCompleteProfile } from "../middleware/authMiddleware.js";
 import { messageLimiter } from "../middleware/rateLimitMiddleWare.js";
 
@@ -34,6 +34,7 @@ router.post(
   "/",
   messageLimiter,
   uploadConfigs.messageFile,
+
   validateMessage,
   sendMessage
 );

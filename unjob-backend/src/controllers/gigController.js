@@ -5,35 +5,40 @@ import apiResponse from "../utils/apiResponse.js";
 import { Gig } from "../models/GigModel.js";
 import { Subscription } from "../models/SubscriptionModel.js";
 import { uploadToCloudinary } from "../config/cloudinaryConfig.js";
-
+import dotenv from "dotenv";
+dotenv.config();
 // ===== UTILITY FUNCTIONS =====
-
 // Parse form data from request
-const parseRequestData = async (req) => {
-  const contentType = req.get("content-type");
-
-  if (contentType?.includes("multipart/form-data")) {
+const parseRequestData = (req) => {
+  const contentType = req.get("content-type") || "";
+  if (contentType.includes("multipart/form-data")) {
     return {
       data: {
         title: req.body.title?.trim(),
-        category: req.body.category,
-        subCategory: req.body.subCategory,
-        subcategory: req.body.subCategory,
-        projectOverview: req.body.projectOverview?.trim(),
-        tags: req.body.tags ? JSON.parse(req.body.tags) : [],
-        budget: req.body.budget ? Number(req.body.budget) : 0,
+        category: req.body?.category,
+        subCategory: req.body?.subCategory,
+        subcategory: req.body?.subCategory, // normalize naming
+        projectOverview: req.body?.projectOverview?.trim(),
+        tags: req.body?.tags || [],
+        budget:
+          req.body.budget && !isNaN(Number(req.body.budget))
+            ? Number(req.body.budget)
+            : 0,
         timeline: req.body.timeline,
-        quantity: req.body.quantity ? Number(req.body.quantity) : 1,
+        quantity:
+          req.body.quantity && !isNaN(Number(req.body.quantity))
+            ? Number(req.body.quantity)
+            : 1,
         startDate: req.body.startDate,
         endDate: req.body.endDate,
-        deliverables: req.body.deliverables
-          ? JSON.parse(req.body.deliverables)
-          : [],
+        deliverables: req.body?.deliverables || [],
         assetDescription: req.body.assetDescription?.trim(),
         status: req.body.status || "published",
       },
-      bannerImage: req.files?.bannerImage?.[0],
-      assetFiles: req.files?.assetFiles || [],
+      bannerImage: req.files?.bannerImage?.[0] || null,
+      assetFiles: Array.isArray(req.files?.assetFiles)
+        ? req.files.assetFiles
+        : [],
     };
   } else {
     return {
@@ -92,7 +97,7 @@ const detectSensitiveInfo = (text) => {
 };
 
 // Handle banner image upload
-const handleBannerImage = async (bannerImageFile, user) => {
+const handleBannerImage = (bannerImageFile, user) => {
   if (bannerImageFile && bannerImageFile.size > 0) {
     if (bannerImageFile.size > 10 * 1024 * 1024) {
       throw new apiError("Banner image too large (max 10MB)", 400);
@@ -101,23 +106,11 @@ const handleBannerImage = async (bannerImageFile, user) => {
     if (!bannerImageFile.mimetype.startsWith("image/")) {
       throw new apiError("Invalid file type. Please upload an image.", 400);
     }
-
-    try {
-      const uploadResult = await uploadToCloudinary(
-        bannerImageFile.buffer,
-        "unjob/gigs/banners",
-        "image"
-      );
-
-      return {
-        bannerImage: uploadResult,
-        bannerSource: "uploaded",
-        autoUpdate: false,
-      };
-    } catch (error) {
-      console.error("Banner image upload failed:", error);
-      throw new apiError("Failed to upload banner image", 500);
-    }
+    return {
+      bannerImage: `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${bannerImageFile.key}`,
+      bannerSource: "uploaded",
+      autoUpdate: false,
+    };
   } else {
     return {
       bannerImage: user.image || null,
@@ -125,46 +118,6 @@ const handleBannerImage = async (bannerImageFile, user) => {
       autoUpdate: user.image ? true : false,
     };
   }
-};
-
-// Upload asset files
-const uploadAssetFiles = async (assetFiles) => {
-  const assetUrls = [];
-  for (const file of assetFiles) {
-    if (file.size > 25 * 1024 * 1024) {
-      throw new apiError(
-        `Asset file ${file.originalname} is too large. Maximum size is 25MB.`,
-        400
-      );
-    }
-
-    try {
-      let folder = "unjob/gigs/assets/documents";
-      let resourceType = "raw";
-
-      if (file.mimetype.startsWith("image/")) {
-        folder = "unjob/gigs/assets/images";
-        resourceType = "image";
-      } else if (file.mimetype.startsWith("video/")) {
-        folder = "unjob/gigs/assets/videos";
-        resourceType = "video";
-      }
-
-      const assetUrl = await uploadToCloudinary(
-        file.buffer,
-        folder,
-        resourceType
-      );
-      assetUrls.push(assetUrl);
-    } catch (error) {
-      console.error("Asset file upload failed:", error);
-      throw new apiError(
-        `Failed to upload asset file: ${file.originalname}`,
-        500
-      );
-    }
-  }
-  return assetUrls;
 };
 
 // Time ago helper
@@ -189,20 +142,30 @@ const getTimeAgo = (date) => {
   }
 };
 
+function handleAssets(assetFiles) {
+  if (assetFiles.length <= 0) {
+    return [];
+  } else {
+    return assetFiles?.map((file) => {
+      return `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${file.key}`;
+    });
+  }
+}
+
+
 // ===== CONTROLLER FUNCTIONS =====
 
 // @desc    Create new gig
 // @route   POST /api/gigs/create
 // @access  Private (Hiring users only)
 export const createGig = asyncHandler(async (req, res, next) => {
-  const user = req.user;
+    const user = req.user;
+    if (!user || user.role !== "hiring") {
+      throw new apiError("Only hiring users can create gigs", 403);
+    }
 
-  if (!user || user.role !== "hiring") {
-    throw new apiError("Only hiring users can create gigs", 403);
-  }
-
-  // Parse form data
-  const { data, bannerImage, assetFiles } = await parseRequestData(req);
+    // Parse form data
+    const { data, bannerImage, assetFiles } = parseRequestData(req);
 
   // Determine if this is a draft
   const isDraft = data.status === "draft";
@@ -250,48 +213,56 @@ export const createGig = asyncHandler(async (req, res, next) => {
     fieldsToCheck.deliverables = data.deliverables.join(" ");
   }
 
-  for (const [fieldName, fieldValue] of Object.entries(fieldsToCheck)) {
-    const issue = detectSensitiveInfo(fieldValue);
-    if (issue) {
-      throw new apiError(
-        `Your ${fieldName} contains a ${issue.type}. Please remove personal information like ${issue.type}s.`,
-        400
-      );
-    }
-  }
-
-  // Check subscription (same logic as before)
-  const existingGigsCount = await Gig.countDocuments({ company: user._id });
-  const isFirstGig = existingGigsCount === 0;
-
-  if (!isFirstGig) {
-    const subscription = await Subscription.findOne({
-      user: user._id,
-      userRole: "hiring",
-      status: "active",
-    }).exec();
-
-    if (!subscription) {
-      throw new apiError(
-        "You need an active subscription to post additional gigs",
-        402
-      );
+    for (const [fieldName, fieldValue] of Object.entries(fieldsToCheck)) {
+      const issue = detectSensitiveInfo(fieldValue);
+      if (issue) {
+        throw new apiError(
+          `Your ${fieldName} contains a ${issue.type}. Please remove personal information like ${issue.type}s.`,
+          400
+        );
+      }
     }
 
-    const isActiveSubscription = subscription.status === "active";
-    const isNotExpired =
-      !subscription.endDate || subscription.endDate > new Date();
-    const isLifetime = subscription.duration === "lifetime";
-    const subscriptionValid =
-      isActiveSubscription && (isNotExpired || isLifetime);
-
-    if (!subscriptionValid) {
-      throw new apiError("Your subscription has expired", 402);
+    // Validate required fields
+    if (!data.title || !data.category || !data.subcategory) {
+      throw new apiError("Title, category, and subcategory are required", 400);
     }
 
-    const maxGigs = subscription.maxGigs || 0;
-    const gigsPosted = subscription.gigsPosted || 0;
-    const canPostGig = maxGigs === -1 || gigsPosted < maxGigs;
+    // Check if first gig
+    const existingGigsCount = await Gig.countDocuments({ company: user._id });
+    const isFirstGig = existingGigsCount === 0;
+
+    // Subscription validation for non-first gigs
+    if (!isFirstGig) {
+      const subscription = await Subscription.findOne({
+        user: user._id,
+        userRole: "hiring",
+        status: "active",
+      }).exec();
+
+      if (!subscription) {
+        throw new apiError(
+          "You need an active subscription to post additional gigs",
+          402
+        );
+      }
+
+      // Validate subscription status
+      const isActiveSubscription = subscription.status === "active";
+      const isNotExpired =
+        !subscription.endDate || subscription.endDate > new Date();
+      const isLifetime = subscription.duration === "lifetime";
+      const subscriptionValid =
+        isActiveSubscription && (isNotExpired || isLifetime);
+
+      if (!subscriptionValid) {
+        throw new apiError("Your subscription has expired", 402);
+      }
+
+      // Check gig limits
+      const maxGigs = subscription.maxGigs || 0;
+      const gigsPosted = subscription.gigsPosted || 0;
+      const canPostGig = maxGigs === -1 || gigsPosted < maxGigs;
 
     if (!canPostGig && !isDraft) {
       throw new apiError(
@@ -309,152 +280,120 @@ export const createGig = asyncHandler(async (req, res, next) => {
     ? processTimeline(data.timeline)
     : { display: "To be determined", days: 0 };
 
-  // Handle file uploads (optional for drafts)
-  let bannerInfo = {
-    bannerImage: null,
-    bannerSource: "none",
-    autoUpdate: false,
-  };
-  let assetUrls = [];
-
-  try {
-    if (bannerImage) {
-      bannerInfo = await handleBannerImage(bannerImage, user);
-    }
-    if (assetFiles && assetFiles.length > 0) {
-      assetUrls = await uploadAssetFiles(assetFiles);
-    }
-  } catch (uploadError) {
-    if (!isDraft) {
-      throw uploadError; // Only fail for published gigs
-    }
-    console.warn(
-      "Upload failed for draft, continuing without files:",
-      uploadError.message
-    );
-  }
-
-  // Determine status
-  let gigStatus = "draft";
-  if (!isDraft && !isPartialSave && !isAutoSave) {
-    gigStatus = "published";
-  }
-
-  // Create gig data with flexible fields
-  const gigData = {
-    title: processedTitle,
-    category: data.category || "other",
-    subcategory: data.subcategory || "general",
-    tags: data.tags || [],
-    description: data.projectOverview || "Draft in progress...",
-    projectOverview: data.projectOverview || "Draft in progress...",
-    company: user._id,
-    status: gigStatus,
-    budget: data.budget || 0,
-    budgetType: "fixed",
-    budgetRange: data.budget
-      ? {
-          min: Math.floor(data.budget * 0.8),
-          max: Math.ceil(data.budget * 1.2),
-        }
-      : { min: 0, max: 0 },
-    timeline: timelineData.display,
-    timelineDays: timelineData.days,
-    quantity: data.quantity || 1,
-    StartDate: data.startDate ? new Date(data.startDate) : null,
-    EndDate: data.endDate ? new Date(data.endDate) : null,
-    deliverables: data.deliverables || [],
-    bannerImage: bannerInfo.bannerImage,
-    bannerSource: bannerInfo.bannerSource,
-    autoUpdateBanner: bannerInfo.autoUpdate,
-    uploadAssets: assetUrls,
-    DerscribeAssets: data.assetDescription || "Project assets and references",
-    skills: data.tags || [],
-    negotiationAllowed:
-      data.negotiationAllowed !== undefined ? data.negotiationAllowed : true,
-    featured: false,
-    paymentStatus: "not_required",
-    metadata: {
-      isFirstGig: isFirstGig,
-      subscriptionRequired: !isFirstGig,
-      createdWithSubscription: !isFirstGig,
-      bannerAutoUpdate: bannerInfo.autoUpdate,
-      userProfileImageAtCreation: user.image,
-      saveType: data.saveType || "manual",
-      isDraft: isDraft,
-      lastSaved: new Date(),
-    },
-  };
-
-  // Save gig
-  const gig = new Gig(gigData);
-  await gig.save();
-
-  // Populate company info
-  await gig.populate(
-    "company",
-    "name image profile.companyName isVerified username"
-  );
-
-  // Update subscription usage only for published gigs
-  if (gigStatus === "published" && !isFirstGig) {
-    try {
-      await Subscription.findOneAndUpdate(
-        { user: user._id, userRole: "hiring", status: "active" },
-        { $inc: { gigsPosted: 1 } },
-        { new: true }
-      );
-    } catch (subscriptionError) {
-      console.error("Failed to update subscription usage:", subscriptionError);
-    }
-  } else if (isFirstGig && gigStatus === "published") {
-    user.hasPostedFirstGig = true;
-    await user.save();
-  }
-
-  // Response messages based on save type
-  let message = "Gig saved successfully!";
-  if (gigStatus === "published") {
-    message = isFirstGig
-      ? "First gig created and published successfully - no subscription required!"
-      : "Gig created and published successfully!";
-  } else if (isDraft) {
-    message = "Gig saved as draft";
-  } else if (isPartialSave) {
-    message = "Progress saved";
-  } else if (isAutoSave) {
-    message = "Auto-saved";
-  }
-
-  const responseData = {
-    success: true,
-    gigId: gig._id,
-    message: message,
-    isFirstGig: isFirstGig,
-    status: gigStatus,
-    saveType: data.saveType || "manual",
-    gigDetails: {
-      _id: gig._id,
-      title: gig.title,
-      category: gig.category,
-      subcategory: gig.subcategory,
-      displayBudget: gig.displayBudget,
-      timeline: gig.timeline,
-      timelineDays: gig.timelineDays,
-      quantity: gig.quantity,
-      status: gig.status,
-      featured: gig.featured,
-      paymentStatus: gig.paymentStatus,
+    // Handle file uploads
+    const bannerInfo = handleBannerImage(bannerImage, user);
+    const assetUrls = handleAssets(assetFiles);
+    const gigData = {
+      title: processedTitle,
+      category: data.category,
+      subcategory: data.subcategory,
+      tags: data.tags || [],
+      description: data.projectOverview,
+      projectOverview: data.projectOverview,
+      company: user._id,
+      status: "published",
+      budget: data.budget,
+      budgetType: "fixed",
+      budgetRange: {
+        min: Math.floor(data.budget * 0.8),
+        max: Math.ceil(data.budget * 1.2),
+      },
+      timeline: timelineData.display,
+      timelineDays: timelineData.days,
+      quantity: data.quantity || 1,
+      StartDate: data.startDate ? new Date(data.startDate) : undefined,
+      EndDate: data.endDate ? new Date(data.endDate) : undefined,
+      deliverables: data.deliverables || [],
       bannerImage: bannerInfo.bannerImage,
       bannerSource: bannerInfo.bannerSource,
       autoUpdateBanner: bannerInfo.autoUpdate,
-      negotiationAllowed: gig.negotiationAllowed,
-      budgetRange: gig.budgetRange,
-      metadata: gig.metadata,
-    },
-  };
+      uploadAssets: assetUrls,
+      DerscribeAssets: data.assetDescription || "Project assets and references",
+      skills: data.tags || [],
+      negotiationAllowed: true,
+      featured: false,
+      paymentStatus: "not_required",
+      metadata: {
+        isFirstGig: isFirstGig,
+        subscriptionRequired: !isFirstGig,
+        createdWithSubscription: !isFirstGig,
+        bannerAutoUpdate: bannerInfo.autoUpdate,
+        userProfileImageAtCreation: user.image,
+      },
+    };
 
-  res.status(201).json(new apiResponse(201, responseData, message));
+    // Save gig
+    const gig = new Gig(gigData);
+    await gig.save();
+
+    // Populate company info
+    await gig.populate(
+      "company",
+      "name image profile.companyName isVerified username"
+    );
+
+    // Update subscription usage
+    if (!isFirstGig) {
+      try {
+        await Subscription.findOneAndUpdate(
+          { user: user._id, userRole: "hiring", status: "active" },
+          { $inc: { gigsPosted: 1 } },
+          { new: true }
+        );
+      } catch (subscriptionError) {
+        console.error(
+          "Failed to update subscription usage:",
+          subscriptionError
+        );
+      }
+    } else {
+      user.hasPostedFirstGig = true;
+      await user.save();
+    }
+
+    // Response
+    const responseData = {
+      success: true,
+      gigId: gig._id,
+      message: isFirstGig
+        ? "First gig created successfully - no subscription required!"
+        : "Gig created and published successfully!",
+      isFirstGig: isFirstGig,
+      gigDetails: {
+        _id: gig._id,
+        title: gig.title,
+        category: gig.category,
+        subcategory: gig.subcategory,
+        displayBudget: gig.displayBudget,
+        timeline: gig.timeline,
+        timelineDays: gig.timelineDays,
+        quantity: gig.quantity,
+        status: gig.status,
+        featured: gig.featured,
+        uploadAssets: gig?.uploadAssets,
+        paymentStatus: gig.paymentStatus,
+        bannerImage: bannerInfo.bannerImage,
+        bannerSource: bannerInfo.bannerSource,
+        autoUpdateBanner: bannerInfo.autoUpdate,
+        negotiationAllowed: gig.negotiationAllowed,
+        budgetRange: gig.budgetRange,
+      },
+
+      bannerInfo: {
+        source: bannerInfo.bannerSource,
+        autoUpdate: bannerInfo.autoUpdate,
+        message:
+          bannerInfo.bannerSource === "uploaded"
+            ? "Custom banner image uploaded"
+            : bannerInfo.bannerSource === "profile_fallback"
+            ? "Using profile image as banner (will auto-update when profile image changes)"
+            : "No banner image set",
+      },
+    };
+    res
+      .status(201)
+      .json(new apiResponse(201, responseData, "Gig created successfully"));
+
 });
 
 // @desc    Get all gigs with filtering
@@ -738,145 +677,147 @@ export const getGigById = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/gigs/:id
 // @access  Private (Gig owner only)
 export const updateGig = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
+    const { id } = req.params;
 
-  if (!id) {
-    throw new apiError("Gig ID is required", 400);
-  }
+    if (!id) {
+      throw new apiError("Gig ID is required", 400);
+    }
 
-  const gig = await Gig.findById(id);
-  if (!gig) {
-    throw new apiError("Gig not found", 404);
-  }
+    const gig = await Gig.findById(id);
+    if (!gig) {
+      throw new apiError("Gig not found", 404);
+    }
 
-  // Verify ownership
-  if (gig.company.toString() !== req.user._id.toString()) {
-    throw new apiError("You are not authorized to modify this gig", 403);
-  }
+    // Verify ownership
+    if (gig.company.toString() !== req.user._id.toString()) {
+      throw new apiError("You are not authorized to modify this gig", 403);
+    }
 
-  // Parse request data
-  const { data, bannerImage, newAssetFiles } = await parseRequestData(req);
+    // Parse request data
+    const { data, bannerImage, assetFiles } = parseRequestData(req);
 
-  // Validation
-  if (data.title !== undefined && !data.title?.trim()) {
-    throw new apiError("Title cannot be empty", 400);
-  }
+    // Validation
+    if (data.title !== undefined && !data.title?.trim()) {
+      throw new apiError("Title cannot be empty", 400);
+    }
 
-  if (data.budget !== undefined && data.budget < 100) {
-    throw new apiError("Minimum gig budget is ₹100", 400);
-  }
+    if (data.budget !== undefined && data.budget < 100) {
+      throw new apiError("Minimum gig budget is ₹100", 400);
+    }
 
-  // Prepare update data
-  const updateData = { updatedAt: new Date() };
+    // Prepare update data
+    const updateData = { updatedAt: new Date() };
 
-  // Update text fields if provided
-  if (data.title !== undefined) updateData.title = data.title.trim();
-  if (data.category !== undefined) updateData.category = data.category;
-  if (data.subCategory !== undefined) updateData.subCategory = data.subCategory;
-  if (data.tags !== undefined) updateData.tags = data.tags;
-  if (data.projectOverview !== undefined) {
-    updateData.projectOverview = data.projectOverview.trim();
-    updateData.description = data.projectOverview.trim();
-  }
-  if (data.budget !== undefined) updateData.budget = data.budget;
-  if (data.timeline !== undefined) updateData.timeline = data.timeline;
-  if (data.startDate !== undefined) {
-    updateData.StartDate = data.startDate ? new Date(data.startDate) : null;
-  }
-  if (data.endDate !== undefined) {
-    updateData.EndDate = data.endDate ? new Date(data.endDate) : null;
-  }
-  if (data.deliverables !== undefined)
-    updateData.deliverables = data.deliverables;
-  if (data.assetDescription !== undefined)
-    updateData.DerscribeAssets = data.assetDescription;
+    // Update text fields if provided
+    if (data.title !== undefined) updateData.title = data.title.trim();
+    if (data.category !== undefined) updateData.category = data.category;
+    if (data.subCategory !== undefined)
+      updateData.subCategory = data.subCategory;
+    if (data.tags !== undefined) updateData.tags = data.tags;
+    if (data.projectOverview !== undefined) {
+      updateData.projectOverview = data.projectOverview.trim();
+      updateData.description = data.projectOverview.trim();
+    }
+    if (data.budget !== undefined) updateData.budget = data.budget;
+    if (data.timeline !== undefined) updateData.timeline = data.timeline;
+    if (data.startDate !== undefined) {
+      updateData.StartDate = data.startDate ? new Date(data.startDate) : null;
+    }
+    if (data.endDate !== undefined) {
+      updateData.EndDate = data.endDate ? new Date(data.endDate) : null;
+    }
+    if (data.deliverables !== undefined)
+      updateData.deliverables = data.deliverables;
+    if (data.assetDescription !== undefined)
+      updateData.DerscribeAssets = data.assetDescription;
 
-  // Handle status updates
-  if (data.status !== undefined) {
-    const validStatuses = [
-      "draft",
-      "active",
-      "paused",
-      "completed",
-      "cancelled",
-    ];
-    if (!validStatuses.includes(data.status)) {
-      throw new apiError(
-        "Invalid status. Valid statuses are: " + validStatuses.join(", "),
-        400
+    // Handle status updates
+    if (data.status !== undefined) {
+      const validStatuses = [
+        "draft",
+        "active",
+        "paused",
+        "completed",
+        "cancelled",
+      ];
+      if (!validStatuses.includes(data.status)) {
+        throw new apiError(
+          "Invalid status. Valid statuses are: " + validStatuses.join(", "),
+          400
+        );
+      }
+
+      updateData.status = data.status;
+
+      // Add status-specific timestamps
+      if (data.status === "completed" && gig.status !== "completed") {
+        updateData.closedAt = new Date();
+      }
+    }
+
+    // Handle banner image update
+    if (data.updateBanner && bannerImage) {
+      const bannerInfo = handleBannerImage(bannerImage, req.user);
+      if (bannerInfo.bannerImage) {
+        updateData.bannerImage = bannerInfo.bannerImage;
+        updateData.bannerSource = "uploaded";
+      }
+    }
+
+    // Handle asset files update
+    let currentAssets = [...(gig.uploadAssets || [])];
+
+    // Remove assets marked for deletion
+    if (data.removedAssets && data.removedAssets.length > 0) {
+      currentAssets = currentAssets.filter(
+        (asset) => !data.removedAssets.includes(asset)
       );
     }
 
-    updateData.status = data.status;
-
-    // Add status-specific timestamps
-    if (data.status === "completed" && gig.status !== "completed") {
-      updateData.closedAt = new Date();
+    // Add new asset files
+    if (assetFiles && assetFiles.length > 0) {
+      const newAssetUrls = handleAssets(assetFiles);
+      currentAssets = [...currentAssets, ...newAssetUrls];
     }
-  }
 
-  // Handle banner image update
-  if (data.updateBanner && bannerImage) {
-    const bannerInfo = await handleBannerImage(bannerImage, req.user);
-    if (bannerInfo.bannerImage) {
-      updateData.bannerImage = bannerInfo.bannerImage;
-      updateData.bannerSource = "uploaded";
-    }
-  }
+    updateData.uploadAssets = currentAssets;
 
-  // Handle asset files update
-  let currentAssets = [...(gig.uploadAssets || [])];
-
-  // Remove assets marked for deletion
-  if (data.removedAssets && data.removedAssets.length > 0) {
-    currentAssets = currentAssets.filter(
-      (asset) => !data.removedAssets.includes(asset)
+    // Update the gig
+    const updatedGig = await Gig.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    }).populate(
+      "company",
+      "name image profile.companyName isVerified profile.bio profile.location profile.website username"
     );
-  }
 
-  // Add new asset files
-  if (newAssetFiles && newAssetFiles.length > 0) {
-    const newAssetUrls = await uploadAssetFiles(newAssetFiles);
-    currentAssets = [...currentAssets, ...newAssetUrls];
-  }
-
-  updateData.uploadAssets = currentAssets;
-
-  // Update the gig
-  const updatedGig = await Gig.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
-  }).populate(
-    "company",
-    "name image profile.companyName isVerified profile.bio profile.location profile.website username"
-  );
-
-  const response = {
-    success: true,
-    message: "Gig updated successfully",
-    gig: updatedGig,
-  };
-
-  // Add status-specific messages
-  if (data.status !== undefined && data.status !== gig.status) {
-    const statusMessages = {
-      draft: "Gig saved as draft",
-      active: "Gig is now live and visible to freelancers",
-      paused: "Gig has been paused and is no longer visible",
-      completed: "Gig marked as completed",
-      cancelled: "Gig has been cancelled",
+    const response = {
+      success: true,
+      message: "Gig updated successfully",
+      gig: updatedGig,
     };
 
-    response.statusUpdate = {
-      from: gig.status,
-      to: data.status,
-      message: statusMessages[data.status] || "Status updated",
-    };
-  }
+    // Add status-specific messages
+    if (data.status !== undefined && data.status !== gig.status) {
+      const statusMessages = {
+        draft: "Gig saved as draft",
+        active: "Gig is now live and visible to freelancers",
+        paused: "Gig has been paused and is no longer visible",
+        completed: "Gig marked as completed",
+        cancelled: "Gig has been cancelled",
+      };
 
-  res
-    .status(200)
-    .json(new apiResponse(200, response, "Gig updated successfully"));
+      response.statusUpdate = {
+        from: gig.status,
+        to: data.status,
+        message: statusMessages[data.status] || "Status updated",
+      };
+    }
+
+    res
+      .status(200)
+      .json(new apiResponse(200, response, "Gig updated successfully"));
+ 
 });
 
 // @desc    Delete gig

@@ -212,30 +212,19 @@ export const sendMessage = asyncHandler(async (req, res, next) => {
       req.file.originalname
     );
 
-    try {
-      const fileUrl = await uploadToCloudinary(
-        req.file.buffer,
-        folder,
-        resourceType
-      );
-
-      messageData.fileUrl = fileUrl;
-      messageData.fileName = req.file.originalname;
-      messageData.fileSize = formatFileSize(req.file.size);
-      messageData.fileType = category;
-      messageData.fileMimeType = req.file.mimetype;
-      messageData.type =
-        category === "image"
-          ? "image"
-          : category === "video"
-          ? "video"
-          : category === "audio"
-          ? "audio"
-          : "file";
-    } catch (uploadError) {
-      console.error("File upload error:", uploadError);
-      throw new apiError("Failed to upload file", 500);
-    }
+    messageData.fileUrl = `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${req.file.key}`;
+    messageData.fileName = req.file.originalname;
+    messageData.fileSize = formatFileSize(req.file.size);
+    messageData.fileType = category;
+    messageData.fileMimeType = req.file.mimetype;
+    messageData.type =
+      category === "image"
+        ? "image"
+        : category === "video"
+        ? "video"
+        : category === "audio"
+        ? "audio"
+        : "file";
   }
 
   // Create message
@@ -634,11 +623,9 @@ export const editMessage = asyncHandler(async (req, res, next) => {
 // @access  Private
 export const uploadMessageFile = asyncHandler(async (req, res, next) => {
   const { conversationId } = req.body;
-
   if (!req.file) {
     throw new apiError("File is required", 400);
   }
-
   if (!conversationId) {
     throw new apiError("Conversation ID is required", 400);
   }
@@ -670,15 +657,8 @@ export const uploadMessageFile = asyncHandler(async (req, res, next) => {
     req.file.originalname
   );
 
-  try {
-    const fileUrl = await uploadToCloudinary(
-      req.file.buffer,
-      folder,
-      resourceType
-    );
-
     const fileData = {
-      fileUrl,
+      fileUrl:`${process.env.CLOUD_FRONT_DOMAIN_NAME}/${req.file.key}`,
       fileName: req.file.originalname,
       fileSize: formatFileSize(req.file.size),
       fileType: category,
@@ -689,10 +669,7 @@ export const uploadMessageFile = asyncHandler(async (req, res, next) => {
     res
       .status(200)
       .json(new apiResponse(200, true, fileData, "File uploaded successfully"));
-  } catch (uploadError) {
-    console.error("File upload error:", uploadError);
-    throw new apiError("Failed to upload file", 500);
-  }
+ 
 });
 
 // @desc    Get message statistics for conversation

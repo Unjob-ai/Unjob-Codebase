@@ -13,7 +13,7 @@ import  {
   validatePagination,
 } from "../middleware/validationMiddleWare.js"
 
-import  { uploadConfigs } from "../middleware/uploadMiddleWare.js"
+import  { uploadConfigs } from "../middleware/uploadToS3Middleware.js"
 import {
   requireCompleteProfile,
   requireFreelancer,
@@ -26,9 +26,9 @@ const router = express.Router();
 // Project routes
 router.post(
   "/",
+  uploadConfigs.projectFiles,
   requireFreelancer,
   requireCompleteProfile,
-  uploadConfigs.projectFiles,
   validateProjectSubmission,
   submitProject
 );

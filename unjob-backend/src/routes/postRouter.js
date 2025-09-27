@@ -30,7 +30,7 @@ import {
   requireFreelancerOrHiring,
 } from "../middleware/authMiddleware.js";
 
-import { uploadConfigs } from "../middleware/uploadMiddleWare.js";
+import { uploadConfigs } from "../middleware/uploadToS3Middleware.js";
 
 import {
   postLimiter,

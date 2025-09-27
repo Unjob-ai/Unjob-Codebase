@@ -308,7 +308,6 @@ const uploadToCloudMiddleware = (folder = "misc") => {
       if (!req.files && !req.file) {
         return next();
       }
-
       const files = req.files || [req.file];
       const cloudFiles = [];
 

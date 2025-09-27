@@ -117,7 +117,7 @@ export const createPost = asyncHandler(async (req, res, next) => {
   let finalImages = images || [];
   if (req.files && req.files.length > 0) {
     const uploadedImages = req.files.map(
-      (file) => file.path || file.secure_url
+      (file) => `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${file?.key}`|| null
     );
     finalImages = [...finalImages, ...uploadedImages];
   }
@@ -201,7 +201,6 @@ export const getPostById = asyncHandler(async (req, res, next) => {
 export const updatePost = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const updates = req.body;
-
   const post = await Post.findById(id);
   if (!post || post.isDeleted) {
     throw new apiError("Post not found", 404);
@@ -215,7 +214,7 @@ export const updatePost = asyncHandler(async (req, res, next) => {
   // Handle new uploaded images
   let newImages = [];
   if (req.files && req.files.length > 0) {
-    newImages = req.files.map((file) => file.path || file.secure_url);
+    newImages = req.files.map((file) => `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${file?.key}`|| null);
   }
 
   // Update allowed fields

@@ -3,7 +3,6 @@ import { User } from "../models/UserModel.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
-import { deleteFileFromS3 } from "../middleware/uploadToS3Middleware.js";
 // ADD THESE NOTIFICATION IMPORTS
 import {
   autoNotifyNewFollower,
@@ -125,10 +124,15 @@ const updateProfile = asyncHandler(async (req, res, next) => {
     //-------------------- Update profile fields--------------------//
     if (!user.profile) user.profile = {};
     Object.assign(user.profile, updates);
-
     // -----------------Update top-level fields if provided---------------------//
-    if ("name" in updates) user["name"] = updates["name"];
-    if ("mobile" in updates) user["mobile"] = updates["mobile"];
+
+    const fields = ["name", "mobile", "image"];
+    for (const field of fields) {
+      if (field in updates) {
+        user[field] = updates[field];
+      }
+    }
+
     await user.save();
     res
       .status(200)
@@ -141,9 +145,6 @@ const updateProfile = asyncHandler(async (req, res, next) => {
         )
       );
   } catch (error) {
-    if (req.file && req?.file?.key) {
-      await deleteFileFromS3(req?.file?.key);
-    }
     throw new apiError("failed to update profile", 400);
   }
 });

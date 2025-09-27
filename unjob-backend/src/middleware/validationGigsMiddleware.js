@@ -5,7 +5,7 @@ import asyncHandler from "../utils/asyncHandler.js";
 
 // Handle validation results
 const handleValidationErrors = asyncHandler(async (req, res, next) => {
-  const errors = validationResult(req);
+    const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const errorMessages = errors.array().map((error) => ({
       field: error.path || error.param,
@@ -68,16 +68,22 @@ const validateNumber = (fieldName, min = 0, max = Number.MAX_SAFE_INTEGER) => {
 const validateArray = (fieldName, maxItems = 50) => {
   return body(fieldName)
     .optional()
-    .isArray({ max: maxItems })
-    .withMessage(`${fieldName} must be an array with maximum ${maxItems} items`)
     .customSanitizer((value) => {
-      // Remove empty strings and duplicates
-      if (Array.isArray(value)) {
-        return [...new Set(value.filter((item) => item && item.trim()))];
+      if (!value) return [];
+      if (!Array.isArray(value)) {
+        try {
+          value = JSON.parse(value); // handle JSON string
+        } catch {
+          value = [value]; // wrap single value
+        }
       }
-      return value;
-    });
+      // Remove empty strings and duplicates
+      return [...new Set(value.filter((item) => item && item.toString().trim()))];
+    })
+    .isArray({ max: maxItems })
+    .withMessage(`${fieldName} must be an array with maximum ${maxItems} items`);
 };
+
 
 // Custom validation for categories
 const validateCategory = () => {
@@ -310,7 +316,7 @@ export const validateUpdateGig = [
 
   body("category")
     .optional()
-    .custom((value) => {
+    .custom((value) => { 
       const validCategories = [
         "web-development",
         "mobile-development",
