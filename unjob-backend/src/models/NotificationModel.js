@@ -1,5 +1,5 @@
 // models/Notification.js
-import mongoose  from "mongoose"
+import mongoose from "mongoose";
 
 const NotificationSchema = new mongoose.Schema(
   {
@@ -11,6 +11,10 @@ const NotificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
+        // User interactions
+        "user_follow",
+        "user_unfollow",
+
         // Post interactions
         "post_like",
         "post_comment",
@@ -94,6 +98,7 @@ const NotificationSchema = new mongoose.Schema(
         "Payment",
         "Subscription",
         "Message",
+        "User",
       ],
     },
     actionUrl: String,

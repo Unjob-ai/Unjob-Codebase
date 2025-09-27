@@ -1,6 +1,6 @@
 // routes/user.js
-import  express from "express"
-import  {
+import express from "express";
+import {
   getProfile,
   completeProfile,
   updateProfile,
@@ -13,19 +13,27 @@ import  {
   getUserStats,
   updateSettings,
   deactivateAccount,
-} from  "../controllers/userController.js"
+  getNotificationPreferences, // ADD THIS IMPORT
+} from "../controllers/userController.js";
 
 import {
   validateProfileUpdate,
   validateObjectId,
   validatePagination,
   validateSearch,
-} from "../middleware/validationMiddleWare.js"
+} from "../middleware/validationMiddleWare.js";
 
-import  { uploadConfigs }  from "../middleware/uploadToS3Middleware.js"
-import  { requireCompleteProfile, requireActive } from "../middleware/authMiddleware.js"
+import { uploadConfigs } from "../middleware/uploadToS3Middleware.js";
+import {
+  requireCompleteProfile,
+  requireActive,
+  protect,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+// Apply authentication middleware to all routes
+router.use(protect);
 
 // Profile routes
 router.get("/profile", getProfile);
@@ -71,5 +79,8 @@ router.delete(
 // Settings and account management
 router.put("/settings", updateSettings);
 router.delete("/account", requireActive, deactivateAccount);
+
+// ADD THIS NEW ROUTE FOR NOTIFICATION PREFERENCES
+router.get("/notification-preferences", getNotificationPreferences);
 
 export default router;

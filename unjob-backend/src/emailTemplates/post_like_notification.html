@@ -1,0 +1,364 @@
+<!-- 
+FILE: emailTemplates/post_like_notification.html
+DESCRIPTION: When someone likes a post
+VARIABLES: {{title}}, {{recipientName}}, {{likerName}}, {{postTitle}}, {{postContent}}, {{actionUrl}}, {{likerAvatar}}
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}}</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background-color: #f9fafb;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        padding: 40px 30px;
+        text-align: center;
+        border-bottom: 3px solid #10b981;
+      }
+      .logo {
+        color: #10b981;
+        margin: 0;
+        font-size: 32px;
+        font-weight: bold;
+        letter-spacing: -0.5px;
+      }
+      .header-subtitle {
+        color: #666;
+        font-size: 16px;
+        margin: 12px 0 0 0;
+        font-weight: 400;
+      }
+      .content {
+        padding: 40px 30px;
+      }
+      .greeting {
+        color: #333;
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0 0 20px 0;
+      }
+      .message {
+        color: #555;
+        line-height: 1.6;
+        font-size: 16px;
+        margin: 0 0 20px 0;
+      }
+      .like-notification-box {
+        background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin: 25px 0;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(236, 72, 153, 0.3);
+      }
+      .like-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        animation: heartbeat 1.5s ease-in-out infinite;
+      }
+      @keyframes heartbeat {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.1);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      .like-title {
+        font-size: 22px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+      }
+      .like-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+      }
+      .user-info {
+        display: flex;
+        align-items: center;
+        background-color: #f8fafc;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        border: 1px solid #e5e7eb;
+      }
+      .user-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background-color: #10b981;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+        margin-right: 15px;
+        flex-shrink: 0;
+      }
+      .user-details h4 {
+        margin: 0 0 5px 0;
+        color: #333;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .user-details p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+      }
+      .post-preview {
+        background-color: #f9fafb;
+        border-left: 4px solid #10b981;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 0 8px 8px 0;
+        border: 1px solid #e5e7eb;
+      }
+      .post-title {
+        color: #333;
+        font-weight: 600;
+        font-size: 16px;
+        margin: 0 0 10px 0;
+      }
+      .post-content {
+        color: #555;
+        font-size: 14px;
+        line-height: 1.5;
+        margin: 0;
+      }
+      .stats-box {
+        background-color: #fef3c7;
+        border-left: 4px solid #f59e0b;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 0 8px 8px 0;
+      }
+      .stats-text {
+        color: #92400e;
+        font-weight: 500;
+        margin: 0;
+        font-size: 14px;
+      }
+      .cta-button {
+        display: inline-block;
+        background-color: #ec4899;
+        color: white !important;
+        padding: 16px 32px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 20px 0;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 14px rgba(236, 72, 153, 0.4);
+      }
+      .cta-button:hover {
+        background-color: #db2777;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+      }
+      .secondary-button {
+        display: inline-block;
+        background-color: transparent;
+        color: #10b981 !important;
+        padding: 14px 28px;
+        text-decoration: none;
+        border: 2px solid #10b981;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 10px 10px 10px 0;
+        transition: all 0.3s ease;
+      }
+      .secondary-button:hover {
+        background-color: #10b981;
+        color: white !important;
+      }
+      .engagement-tips {
+        background-color: #f0fdf4;
+        border-left: 4px solid #10b981;
+        padding: 20px;
+        margin: 25px 0;
+        border-radius: 0 8px 8px 0;
+      }
+      .tips-title {
+        color: #065f46;
+        font-weight: 600;
+        margin: 0 0 10px 0;
+        font-size: 16px;
+      }
+      .tip-item {
+        color: #047857;
+        font-size: 14px;
+        margin: 5px 0;
+        padding-left: 15px;
+        position: relative;
+      }
+      .tip-item:before {
+        content: "💡";
+        position: absolute;
+        left: 0;
+      }
+      .footer {
+        background-color: #f8fafc;
+        padding: 24px 30px;
+        text-align: center;
+        border-top: 1px solid #e2e8f0;
+      }
+      .footer-text {
+        color: #6b7280;
+        font-size: 14px;
+        margin: 0 0 4px 0;
+      }
+      .footer-subtext {
+        color: #9ca3af;
+        font-size: 12px;
+        margin: 0;
+      }
+      @media (max-width: 600px) {
+        .container {
+          margin: 0;
+          width: 100%;
+        }
+        .content {
+          padding: 30px 20px;
+        }
+        .header {
+          padding: 30px 20px;
+        }
+        .greeting {
+          font-size: 24px;
+        }
+        .user-info {
+          flex-direction: column;
+          text-align: center;
+        }
+        .user-avatar {
+          margin: 0 0 15px 0;
+        }
+        .cta-button,
+        .secondary-button {
+          display: block;
+          margin: 10px 0;
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 class="logo">UNJOB</h1>
+        <p class="header-subtitle">{{title}}</p>
+      </div>
+
+      <div class="content">
+        <h2 class="greeting">Someone Liked Your Post! ❤️</h2>
+
+        <p class="message">Hello <strong>{{recipientName}}</strong>,</p>
+
+        <p class="message">
+          Great news! Your content is making an impact. Someone just liked your
+          post and we wanted to let you know right away.
+        </p>
+
+        <div class="like-notification-box">
+          <div class="like-icon">❤️</div>
+          <div class="like-title">Your Post Got a Like!</div>
+          <div class="like-subtitle">Keep creating engaging content</div>
+        </div>
+
+        <div class="user-info">
+          <div class="user-avatar">
+            {{#if likerAvatar}}
+            <img
+              src="{{likerAvatar}}"
+              alt="{{likerName}}"
+              style="
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                object-fit: cover;
+              "
+            />
+            {{else}} {{likerName.0}} {{/if}}
+          </div>
+          <div class="user-details">
+            <h4>{{likerName}}</h4>
+            <p>liked your post</p>
+          </div>
+        </div>
+
+        <div class="post-preview">
+          <div class="post-title">{{postTitle}}</div>
+          <div class="post-content">{{postContent}}</div>
+        </div>
+
+        <div class="stats-box">
+          <p class="stats-text">
+            <strong>Engagement matters!</strong> Each like helps increase your
+            post's visibility and builds your professional reputation on UNJOB.
+          </p>
+        </div>
+
+        <div class="engagement-tips">
+          <div class="tips-title">💡 Tips to increase engagement:</div>
+          <div class="tip-item">
+            Share valuable insights about your industry
+          </div>
+          <div class="tip-item">Ask questions to encourage discussion</div>
+          <div class="tip-item">Use relevant hashtags to reach more people</div>
+          <div class="tip-item">Respond to comments to build relationships</div>
+          <div class="tip-item">Post consistently to stay visible</div>
+        </div>
+
+        <p class="message">
+          This is a perfect opportunity to engage back! Visit your post to see
+          who liked it and maybe start a conversation.
+        </p>
+
+        <div style="text-align: center; margin: 30px 0">
+          <a href="{{actionUrl}}" class="cta-button">View Your Post</a>
+          <a href="{{actionUrl}}/comments" class="secondary-button"
+            >Reply to Comments</a
+          >
+        </div>
+
+        <p
+          class="message"
+          style="color: #6b7280; font-size: 14px; margin-top: 30px"
+        >
+          <strong>Keep the momentum going!</strong> The more you engage with
+          your network, the more your professional brand grows. Thanks for being
+          an active member of the UNJOB community!
+        </p>
+      </div>
+
+      <div class="footer">
+        <p class="footer-text">© 2025 UNJOB. All rights reserved.</p>
+        <p class="footer-subtext">
+          You received this email because someone interacted with your content
+          on UNJOB
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

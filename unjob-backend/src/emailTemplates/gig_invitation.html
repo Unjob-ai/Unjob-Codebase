@@ -1,0 +1,158 @@
+<!-- 
+FILE: emailTemplates/gig_invitation.html
+DESCRIPTION: When someone is invited to apply for a gig
+VARIABLES: {{title}}, {{recipientName}}, {{inviterName}}, {{gigTitle}}, {{actionUrl}}
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}}</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+      }
+      .header {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        padding: 40px 30px;
+        text-align: center;
+        border-bottom: 3px solid #10b981;
+      }
+      .logo {
+        color: #10b981;
+        margin: 0;
+        font-size: 32px;
+        font-weight: bold;
+        letter-spacing: -0.5px;
+      }
+      .header-subtitle {
+        color: #666;
+        font-size: 16px;
+        margin: 12px 0 0 0;
+        font-weight: 400;
+      }
+      .content {
+        padding: 40px 30px;
+      }
+      .greeting {
+        color: #333;
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0 0 20px 0;
+      }
+      .message {
+        color: #555;
+        line-height: 1.6;
+        font-size: 16px;
+        margin: 0 0 20px 0;
+      }
+      .invitation-box {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin: 25px 0;
+        text-align: center;
+      }
+      .invitation-title {
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+      }
+      .invitation-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+      }
+      .cta-button {
+        display: inline-block;
+        background-color: #ffffff;
+        color: #10b981 !important;
+        padding: 14px 28px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 20px 0;
+        transition: all 0.3s;
+      }
+      .cta-button:hover {
+        background-color: #f8fafc;
+      }
+      .footer {
+        background-color: #f8fafc;
+        padding: 24px 30px;
+        text-align: center;
+        border-top: 1px solid #e2e8f0;
+      }
+      .footer-text {
+        color: #6b7280;
+        font-size: 14px;
+        margin: 0 0 4px 0;
+      }
+      .footer-subtext {
+        color: #9ca3af;
+        font-size: 12px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 class="logo">UNJOB</h1>
+        <p class="header-subtitle">{{title}}</p>
+      </div>
+
+      <div class="content">
+        <h2 class="greeting">You're Invited! 🎉</h2>
+
+        <p class="message">Hello <strong>{{recipientName}}</strong>,</p>
+
+        <p class="message">
+          Great news!
+          <strong style="color: #10b981">{{inviterName}}</strong> has personally
+          invited you to apply for an exciting opportunity.
+        </p>
+
+        <div class="invitation-box">
+          <div class="invitation-title">{{gigTitle}}</div>
+          <div class="invitation-subtitle">
+            You've been specially selected for this project
+          </div>
+        </div>
+
+        <p class="message">
+          This invitation means your skills and experience caught their
+          attention. Don't miss out on this opportunity to showcase your
+          expertise!
+        </p>
+
+        <a href="{{actionUrl}}" class="cta-button">View Gig & Apply Now</a>
+
+        <p
+          class="message"
+          style="color: #6b7280; font-size: 14px; margin-top: 30px"
+        >
+          Personalized invitations like this are a great way to find quality
+          projects that match your skills.
+        </p>
+      </div>
+
+      <div class="footer">
+        <p class="footer-text">© 2025 UNJOB. All rights reserved.</p>
+        <p class="footer-subtext">
+          You received this email because you have an account with UNJOB
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
