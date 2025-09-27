@@ -10,6 +10,9 @@ import { Wallet } from "../models/WalletModel.js";
 import PDFDocument from "pdfkit";
 import { Readable } from "stream";
 
+// ADD THESE NOTIFICATION IMPORTS
+import { autoNotifyPayment } from "../utils/notificationHelpers.js";
+
 // @desc    Get payment history for user
 // @route   GET /api/payments/history
 // @access  Private
@@ -340,7 +343,7 @@ export const getWalletDetails = asyncHandler(async (req, res) => {
     );
 });
 
-// @desc    Request withdrawal
+// @desc    Request withdrawal - UPDATED WITH NOTIFICATIONS
 // @route   POST /api/payments/withdraw
 // @access  Private (Freelancers only)
 export const requestWithdrawal = asyncHandler(async (req, res) => {
@@ -403,6 +406,9 @@ export const requestWithdrawal = asyncHandler(async (req, res) => {
     status: "pending",
   });
 
+  // AUTO-NOTIFY USER ABOUT WITHDRAWAL REQUEST
+  await autoNotifyPayment(withdrawal, user);
+
   res.status(201).json(
     new apiResponse(
       201,
@@ -415,6 +421,194 @@ export const requestWithdrawal = asyncHandler(async (req, res) => {
       "Withdrawal request submitted successfully"
     )
   );
+});
+
+// @desc    Process withdrawal (Admin only) - UPDATED WITH NOTIFICATIONS
+// @route   POST /api/payments/withdraw/:withdrawalId/process
+// @access  Private (Admin only)
+export const processWithdrawal = asyncHandler(async (req, res) => {
+  const { withdrawalId } = req.params;
+  const { status, adminNote } = req.body;
+
+  // Only admin can process withdrawals
+  if (!req.user.isAdmin) {
+    throw new apiError("Only admin can process withdrawals", 403);
+  }
+
+  if (!["approved", "rejected"].includes(status)) {
+    throw new apiError("Status must be 'approved' or 'rejected'", 400);
+  }
+
+  const withdrawal = await Payment.findOne({
+    "metadata.withdrawalId": withdrawalId,
+    type: "withdrawal",
+  }).populate("payer", "name email");
+
+  if (!withdrawal) {
+    throw new apiError("Withdrawal request not found", 404);
+  }
+
+  if (withdrawal.status !== "pending") {
+    throw new apiError("Withdrawal already processed", 400);
+  }
+
+  // Update withdrawal status
+  withdrawal.status = status === "approved" ? "processing" : "rejected";
+  withdrawal.metadata.adminNote = adminNote;
+  withdrawal.metadata.processedAt = new Date();
+  withdrawal.metadata.processedBy = req.user._id;
+
+  if (status === "rejected") {
+    // If rejected, return funds to wallet
+    const wallet = await Wallet.findOne({ user: withdrawal.payer._id });
+    if (wallet) {
+      await wallet.addFunds(
+        withdrawal.amount,
+        `Withdrawal ${withdrawalId} rejected - funds returned`,
+        {
+          type: "withdrawal_rejection",
+          withdrawalId,
+          adminNote,
+        }
+      );
+    }
+  }
+
+  await withdrawal.save();
+
+  // AUTO-NOTIFY USER ABOUT WITHDRAWAL STATUS UPDATE
+  await autoNotifyPayment(withdrawal, withdrawal.payer);
+
+  res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        withdrawalId,
+        status: withdrawal.status,
+        message:
+          status === "approved"
+            ? "Withdrawal approved and is being processed"
+            : "Withdrawal rejected and funds returned to wallet",
+      },
+      "Withdrawal processed successfully"
+    )
+  );
+});
+
+// @desc    Complete withdrawal (Admin only) - UPDATED WITH NOTIFICATIONS
+// @route   POST /api/payments/withdraw/:withdrawalId/complete
+// @access  Private (Admin only)
+export const completeWithdrawal = asyncHandler(async (req, res) => {
+  const { withdrawalId } = req.params;
+  const { transactionId, completionNote } = req.body;
+
+  // Only admin can complete withdrawals
+  if (!req.user.isAdmin) {
+    throw new apiError("Only admin can complete withdrawals", 403);
+  }
+
+  const withdrawal = await Payment.findOne({
+    "metadata.withdrawalId": withdrawalId,
+    type: "withdrawal",
+  }).populate("payer", "name email");
+
+  if (!withdrawal) {
+    throw new apiError("Withdrawal request not found", 404);
+  }
+
+  if (withdrawal.status !== "processing") {
+    throw new apiError("Withdrawal must be in processing status", 400);
+  }
+
+  // Update withdrawal to completed
+  withdrawal.status = "completed";
+  withdrawal.metadata.completedAt = new Date();
+  withdrawal.metadata.completedBy = req.user._id;
+  withdrawal.metadata.transactionId = transactionId;
+  withdrawal.metadata.completionNote = completionNote;
+
+  await withdrawal.save();
+
+  // AUTO-NOTIFY USER ABOUT WITHDRAWAL COMPLETION
+  await autoNotifyPayment(withdrawal, withdrawal.payer);
+
+  res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        withdrawalId,
+        status: "completed",
+        transactionId,
+        message: "Withdrawal completed successfully",
+      },
+      "Withdrawal completed successfully"
+    )
+  );
+});
+
+// @desc    Create payment record - UPDATED WITH NOTIFICATIONS
+// @route   POST /api/payments/create
+// @access  Private (Admin only - for manual payment creation)
+export const createPayment = asyncHandler(async (req, res) => {
+  const { payerId, payeeId, amount, type, description, gigId, subscriptionId } =
+    req.body;
+
+  // Only admin can create manual payments
+  if (!req.user.isAdmin) {
+    throw new apiError("Only admin can create manual payments", 403);
+  }
+
+  // Validation
+  if (!payerId || !payeeId || !amount || !type) {
+    throw new apiError("Payer, payee, amount, and type are required", 400);
+  }
+
+  // Verify users exist
+  const [payer, payee] = await Promise.all([
+    User.findById(payerId),
+    User.findById(payeeId),
+  ]);
+
+  if (!payer || !payee) {
+    throw new apiError("Payer or payee not found", 404);
+  }
+
+  // Create payment record
+  const paymentData = {
+    payer: payerId,
+    payee: payeeId,
+    amount,
+    type,
+    status: "completed",
+    description: description || `Manual payment - ${type}`,
+    metadata: {
+      createdManually: true,
+      createdBy: req.user._id,
+    },
+  };
+
+  if (gigId) paymentData.gig = gigId;
+  if (subscriptionId) paymentData.subscription = subscriptionId;
+
+  const payment = await Payment.create(paymentData);
+
+  // Populate for response
+  await payment.populate([
+    { path: "payer", select: "name email" },
+    { path: "payee", select: "name email" },
+    { path: "gig", select: "title" },
+    { path: "subscription", select: "planType duration" },
+  ]);
+
+  // AUTO-NOTIFY BOTH PARTIES ABOUT MANUAL PAYMENT
+  await autoNotifyPayment(payment, payer);
+  if (payerId !== payeeId) {
+    await autoNotifyPayment(payment, payee);
+  }
+
+  res
+    .status(201)
+    .json(new apiResponse(201, payment, "Payment created successfully"));
 });
 
 // Helper functions
@@ -441,6 +635,7 @@ const getPaymentStatusDescription = (status) => {
     completed: "Payment completed successfully",
     failed: "Payment failed",
     refunded: "Payment refunded",
+    rejected: "Payment rejected",
   };
   return descriptions[status] || "Unknown status";
 };

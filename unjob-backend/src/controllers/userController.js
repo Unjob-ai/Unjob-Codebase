@@ -4,6 +4,12 @@ import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
 import { deleteFileFromS3 } from "../middleware/uploadToS3Middleware.js";
+// ADD THESE NOTIFICATION IMPORTS
+import {
+  autoNotifyNewFollower,
+  autoNotifyWelcome,
+} from "../utils/notificationHelpers.js";
+
 // @desc    Get current user profile
 // @route   GET /api/user/profile
 // @access  Private
@@ -36,6 +42,9 @@ const getProfile = asyncHandler(async (req, res, next) => {
 const completeProfile = asyncHandler(async (req, res, next) => {
   const profileData = req?.body;
   const user = req.user;
+
+  // Track if this is the first time completing profile
+  const isFirstTimeComplete = !user.profile?.isCompleted;
 
   // Create the base profile object if it doesn't exist
   if (!user?.profile) user.profile = {};
@@ -82,6 +91,11 @@ const completeProfile = asyncHandler(async (req, res, next) => {
   await user.save();
 
   console.log(`[API] Profile completed successfully for user ${user._id}`);
+
+  // SEND WELCOME NOTIFICATION FOR FIRST-TIME PROFILE COMPLETION
+  if (isFirstTimeComplete) {
+    await autoNotifyWelcome(user);
+  }
 
   res
     .status(200)
@@ -152,6 +166,14 @@ const getUserById = asyncHandler(async (req, res, next) => {
   // Check if current user is following this user
   const isFollowing = req.user.following.includes(userId);
 
+  // OPTIONAL: Track profile views for analytics
+  if (userId !== req.user._id.toString()) {
+    // Increment profile views (you may want to debounce this)
+    await User.findByIdAndUpdate(userId, {
+      $inc: { "stats.profileViews": 1 },
+    });
+  }
+
   res.status(200).json(
     new apiResponse(
       200,
@@ -201,6 +223,9 @@ const followUser = asyncHandler(async (req, res, next) => {
 
   await currentUser.save();
   await userToFollow.save();
+
+  // SEND NEW FOLLOWER NOTIFICATION
+  await autoNotifyNewFollower(userToFollow, currentUser);
 
   res
     .status(200)
@@ -252,6 +277,8 @@ const unfollowUser = asyncHandler(async (req, res, next) => {
 
   await currentUser.save();
   await userToUnfollow.save();
+
+  // NOTE: Typically we don't notify on unfollow, but you could add it here if needed
 
   res.status(200).json(
     new apiResponse(
@@ -473,7 +500,7 @@ const getUserStats = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/user/settings
 // @access  Private
 const updateSettings = asyncHandler(async (req, res, next) => {
-  const { preferences, privacy } = req.body;
+  const { preferences, privacy, notificationPreferences } = req.body;
   const user = req.user;
 
   if (preferences) {
@@ -482,6 +509,14 @@ const updateSettings = asyncHandler(async (req, res, next) => {
 
   if (privacy) {
     user.privacy = { ...user.privacy, ...privacy };
+  }
+
+  // ADD NOTIFICATION PREFERENCES UPDATE
+  if (notificationPreferences) {
+    user.notificationPreferences = {
+      ...user.notificationPreferences,
+      ...notificationPreferences,
+    };
   }
 
   await user.save();
@@ -494,6 +529,7 @@ const updateSettings = asyncHandler(async (req, res, next) => {
         message: "Settings updated successfully",
         preferences: user.preferences,
         privacy: user.privacy,
+        notificationPreferences: user.notificationPreferences, // ADD THIS
       },
       "User settings updated successfully"
     )
@@ -507,6 +543,10 @@ const deactivateAccount = asyncHandler(async (req, res, next) => {
   const user = req.user;
   user.isActive = false;
   await user.save();
+
+  // OPTIONAL: Send account deactivation confirmation email
+  // await autoNotifyAccountDeactivation(user); // You'd need to create this helper
+
   res
     .status(200)
     .json(
@@ -518,6 +558,65 @@ const deactivateAccount = asyncHandler(async (req, res, next) => {
       )
     );
 });
+
+// ADD NEW ENDPOINT: Get user notification preferences
+// @desc    Get user notification preferences
+// @route   GET /api/user/notification-preferences
+// @access  Private
+const getNotificationPreferences = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id).select(
+    "notificationPreferences"
+  );
+
+  if (!user) {
+    throw new apiError("User not found", 404);
+  }
+
+  // Default preferences if not set
+  const defaultPreferences = {
+    email: {
+      postLikes: true,
+      postComments: true,
+      newFollowers: true,
+      gigApplications: true,
+      gigInvitations: true,
+      projectSubmissions: true,
+      projectReviews: true,
+      payments: true,
+      subscriptions: true,
+      deadlineReminders: true,
+    },
+    push: {
+      postLikes: true,
+      postComments: true,
+      newFollowers: true,
+      gigApplications: true,
+      gigInvitations: true,
+      projectSubmissions: true,
+      projectReviews: false,
+      payments: true,
+      subscriptions: true,
+      deadlineReminders: true,
+    },
+  };
+
+  const preferences = {
+    ...defaultPreferences,
+    ...user.notificationPreferences,
+  };
+
+  res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        true,
+        preferences,
+        "Notification preferences fetched successfully"
+      )
+    );
+});
+
 export {
   getProfile,
   completeProfile,
@@ -531,4 +630,5 @@ export {
   getUserStats,
   updateSettings,
   deactivateAccount,
+  getNotificationPreferences,
 };

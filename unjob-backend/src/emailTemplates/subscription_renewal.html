@@ -1,0 +1,307 @@
+<!-- 
+FILE: emailTemplates/subscription_renewal.html
+DESCRIPTION: Subscription renewal reminders
+VARIABLES: {{title}}, {{recipientName}}, {{planType}}, {{renewalDate}}, {{actionUrl}}
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}}</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background-color: #f9fafb;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        padding: 40px 30px;
+        text-align: center;
+        border-bottom: 3px solid #10b981;
+      }
+      .logo {
+        color: #10b981;
+        margin: 0;
+        font-size: 32px;
+        font-weight: bold;
+        letter-spacing: -0.5px;
+      }
+      .header-subtitle {
+        color: #666;
+        font-size: 16px;
+        margin: 12px 0 0 0;
+        font-weight: 400;
+      }
+      .content {
+        padding: 40px 30px;
+      }
+      .greeting {
+        color: #333;
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0 0 20px 0;
+      }
+      .message {
+        color: #555;
+        line-height: 1.6;
+        font-size: 16px;
+        margin: 0 0 20px 0;
+      }
+      .renewal-box {
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        margin: 25px 0;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(139, 92, 246, 0.3);
+      }
+      .renewal-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+      }
+      .renewal-title {
+        font-size: 22px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+      }
+      .renewal-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+      }
+      .benefits-box {
+        background-color: #f8fafc;
+        padding: 25px;
+        border-radius: 8px;
+        margin: 25px 0;
+        border: 1px solid #e5e7eb;
+      }
+      .benefit-item {
+        display: flex;
+        align-items: center;
+        margin: 12px 0;
+        color: #374151;
+      }
+      .benefit-icon {
+        color: #10b981;
+        margin-right: 12px;
+        font-weight: bold;
+        font-size: 16px;
+      }
+      .pricing-info {
+        background-color: #fef3c7;
+        border-left: 4px solid #f59e0b;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 0 8px 8px 0;
+      }
+      .pricing-text {
+        color: #92400e;
+        font-weight: 500;
+        margin: 0;
+      }
+      .cta-button {
+        display: inline-block;
+        background-color: #8b5cf6;
+        color: white !important;
+        padding: 16px 32px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 20px 0;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+      }
+      .cta-button:hover {
+        background-color: #7c3aed;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+      }
+      .secondary-button {
+        display: inline-block;
+        background-color: transparent;
+        color: #8b5cf6 !important;
+        padding: 14px 28px;
+        text-decoration: none;
+        border: 2px solid #8b5cf6;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 10px 10px 10px 0;
+        transition: all 0.3s ease;
+      }
+      .secondary-button:hover {
+        background-color: #8b5cf6;
+        color: white !important;
+      }
+      .important-note {
+        background-color: #f0f9ff;
+        border-left: 4px solid #3b82f6;
+        padding: 20px;
+        margin: 25px 0;
+        border-radius: 0 8px 8px 0;
+      }
+      .important-text {
+        color: #1e40af;
+        font-weight: 500;
+        margin: 0;
+      }
+      .footer {
+        background-color: #f8fafc;
+        padding: 24px 30px;
+        text-align: center;
+        border-top: 1px solid #e2e8f0;
+      }
+      .footer-text {
+        color: #6b7280;
+        font-size: 14px;
+        margin: 0 0 4px 0;
+      }
+      .footer-subtext {
+        color: #9ca3af;
+        font-size: 12px;
+        margin: 0;
+      }
+      @media (max-width: 600px) {
+        .container {
+          margin: 0;
+          width: 100%;
+        }
+        .content {
+          padding: 30px 20px;
+        }
+        .header {
+          padding: 30px 20px;
+        }
+        .greeting {
+          font-size: 24px;
+        }
+        .cta-button,
+        .secondary-button {
+          display: block;
+          margin: 10px 0;
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 class="logo">UNJOB</h1>
+        <p class="header-subtitle">{{title}}</p>
+      </div>
+
+      <div class="content">
+        <h2 class="greeting">Subscription Renewal 🔄</h2>
+
+        <p class="message">Hello <strong>{{recipientName}}</strong>,</p>
+
+        <p class="message">
+          Your UNJOB <strong>{{planType}}</strong> subscription is set to renew
+          soon. We wanted to remind you about your upcoming renewal and give you
+          the opportunity to review your subscription.
+        </p>
+
+        <div class="renewal-box">
+          <div class="renewal-icon">🔄</div>
+          <div class="renewal-title">{{planType}} Plan Renewal</div>
+          <div class="renewal-subtitle">
+            Renews automatically on {{renewalDate}}
+          </div>
+        </div>
+
+        <div class="pricing-info">
+          <p class="pricing-text">
+            <strong>Auto-renewal is enabled.</strong> Your subscription will
+            continue seamlessly unless you choose to cancel or modify it before
+            the renewal date.
+          </p>
+        </div>
+
+        <div class="benefits-box">
+          <h3 style="color: #333; margin: 0 0 15px 0; font-size: 18px">
+            Your {{planType}} plan includes:
+          </h3>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Priority application placement</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Advanced profile features & verification</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Premium customer support</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Enhanced visibility to clients</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Detailed analytics and insights</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Unlimited gig applications</span>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <span>Access to premium job categories</span>
+          </div>
+        </div>
+
+        <div class="important-note">
+          <p class="important-text">
+            <strong>Need to make changes?</strong> You can update your payment
+            method, change your plan, or cancel your subscription anytime from
+            your account settings. Changes must be made before {{renewalDate}}
+            to affect this billing cycle.
+          </p>
+        </div>
+
+        <p class="message">
+          Continue enjoying all the premium features that help you succeed in
+          your freelancing career. Your subscription will automatically renew
+          unless you cancel before the renewal date.
+        </p>
+
+        <div style="text-align: center; margin: 30px 0">
+          <a href="{{actionUrl}}" class="cta-button">Manage Subscription</a>
+          <a href="{{actionUrl}}/billing" class="secondary-button"
+            >View Billing History</a
+          >
+        </div>
+
+        <p
+          class="message"
+          style="color: #6b7280; font-size: 14px; margin-top: 30px"
+        >
+          <strong>Questions about your subscription?</strong> Our support team
+          is here to help. Thank you for being a valued UNJOB member and for
+          choosing to invest in your professional growth!
+        </p>
+      </div>
+
+      <div class="footer">
+        <p class="footer-text">© 2025 UNJOB. All rights reserved.</p>
+        <p class="footer-subtext">
+          You received this email because you have an active subscription with
+          UNJOB
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -8,6 +8,13 @@ import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
 
+// ADD THESE NOTIFICATION IMPORTS
+import {
+  autoNotifySubscriptionCreated,
+  autoNotifySubscriptionRenewal,
+  autoNotifyPayment,
+} from "../utils/notificationHelpers.js";
+
 // Import plans data from utils
 import {
   getPlanPricing,
@@ -98,7 +105,7 @@ const createPaymentRecord = async (paymentData) => {
   }
 };
 
-// @desc    Create subscription
+// @desc    Create subscription - UPDATED WITH NOTIFICATIONS
 // @route   POST /api/subscription/create
 // @access  Private
 const createSubscription = asyncHandler(async (req, res) => {
@@ -145,7 +152,6 @@ const createSubscription = asyncHandler(async (req, res) => {
       return res.status(200).json(
         new apiResponse(
           200,
-          true,
           {
             paymentType: "free",
             subscriptionId: existingSubscription._id,
@@ -215,7 +221,7 @@ const createSubscription = asyncHandler(async (req, res) => {
     console.log("✅ Free subscription activated in DB:", freeSubscription._id);
 
     // Create free payment record
-    await createPaymentRecord({
+    const freePayment = await createPaymentRecord({
       userId: user._id,
       amount: 0,
       status: "completed",
@@ -231,10 +237,15 @@ const createSubscription = asyncHandler(async (req, res) => {
       },
     });
 
+    // AUTO-NOTIFY USER ABOUT FREE SUBSCRIPTION CREATION
+    await autoNotifySubscriptionCreated(freeSubscription, user, {
+      transactionId: `free_${Date.now()}`,
+      amount: 0,
+    });
+
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           paymentType: "free",
           subscriptionId: freeSubscription._id,
@@ -349,7 +360,6 @@ const createSubscription = asyncHandler(async (req, res) => {
   res.status(200).json(
     new apiResponse(
       200,
-      true,
       {
         paymentType: "one-time",
         orderId: razorpayOrder.id,
@@ -390,7 +400,6 @@ const getPlans = asyncHandler(async (req, res) => {
   res.status(200).json(
     new apiResponse(
       200,
-      true,
       {
         plans,
         comparisonData,
@@ -415,7 +424,6 @@ const checkSubscriptionStatus = asyncHandler(async (req, res) => {
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           hasActiveSubscription: false,
           canPostGig: false,
@@ -441,7 +449,6 @@ const checkSubscriptionStatus = asyncHandler(async (req, res) => {
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           hasActiveSubscription: false,
           canPostGig: false,
@@ -471,7 +478,6 @@ const checkSubscriptionStatus = asyncHandler(async (req, res) => {
   res.status(200).json(
     new apiResponse(
       200,
-      true,
       {
         hasActiveSubscription: true,
         canPostGig: true,
@@ -496,7 +502,7 @@ const checkSubscriptionStatus = asyncHandler(async (req, res) => {
   );
 });
 
-// @desc    Verify payment
+// @desc    Verify payment - UPDATED WITH NOTIFICATIONS
 // @route   POST /api/subscription/verify-payment
 // @access  Private
 const verifyPayment = asyncHandler(async (req, res) => {
@@ -522,6 +528,12 @@ const verifyPayment = asyncHandler(async (req, res) => {
   if (!subscription) {
     console.error("Subscription not found:", subscriptionId);
     throw new apiError("Subscription not found", 404);
+  }
+
+  // Get user for notifications
+  const user = await User.findById(subscription.user);
+  if (!user) {
+    throw new apiError("User not found", 404);
   }
 
   // Get Razorpay instance for verification
@@ -626,7 +638,7 @@ const verifyPayment = asyncHandler(async (req, res) => {
   console.log("Subscription activated:", subscription._id);
 
   // Create payment record for history tracking - FIXED
-  await createPaymentRecord({
+  const paymentRecord = await createPaymentRecord({
     userId: subscription.user,
     amount: subscription.price,
     status: "completed",
@@ -649,6 +661,19 @@ const verifyPayment = asyncHandler(async (req, res) => {
     },
   });
 
+  // AUTO-NOTIFY USER ABOUT SUBSCRIPTION CREATION AND PAYMENT
+  const paymentDetails = {
+    transactionId: razorpay_payment_id || razorpay_subscription_id,
+    razorpayPaymentId: razorpay_payment_id,
+    amount: subscription.price,
+  };
+
+  await autoNotifySubscriptionCreated(subscription, user, paymentDetails);
+
+  if (paymentRecord) {
+    await autoNotifyPayment(paymentRecord, user);
+  }
+
   // Get plan limits for response
   const planLimits = getPlanLimits(
     subscription.planType,
@@ -658,7 +683,6 @@ const verifyPayment = asyncHandler(async (req, res) => {
   res.status(200).json(
     new apiResponse(
       200,
-      true,
       {
         subscription: {
           id: subscription._id,
@@ -819,14 +843,13 @@ const getSubscriptionManagement = asyncHandler(async (req, res) => {
     .json(
       new apiResponse(
         200,
-        true,
         responseData,
         "Subscription details fetched successfully"
       )
     );
 });
 
-// @desc    Update subscription settings
+// @desc    Update subscription settings - UPDATED WITH NOTIFICATIONS
 // @route   PATCH /api/subscription/manage
 // @access  Private
 const updateSubscriptionSettings = asyncHandler(async (req, res) => {
@@ -861,7 +884,6 @@ const updateSubscriptionSettings = asyncHandler(async (req, res) => {
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           subscription: {
             id: subscription._id,
@@ -882,10 +904,14 @@ const updateSubscriptionSettings = asyncHandler(async (req, res) => {
     subscription.autoRenewal = !subscription.autoRenewal;
     await subscription.save();
 
+    // AUTO-NOTIFY USER ABOUT RENEWAL STATUS CHANGE
+    if (subscription.autoRenewal) {
+      await autoNotifySubscriptionRenewal(subscription, user);
+    }
+
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           autoRenewal: subscription.autoRenewal,
         },
@@ -901,10 +927,14 @@ const updateSubscriptionSettings = asyncHandler(async (req, res) => {
     subscription.autoRenewal = autoRenewal;
     await subscription.save();
 
+    // AUTO-NOTIFY USER ABOUT RENEWAL STATUS CHANGE
+    if (autoRenewal) {
+      await autoNotifySubscriptionRenewal(subscription, user);
+    }
+
     return res.status(200).json(
       new apiResponse(
         200,
-        true,
         {
           autoRenewal: subscription.autoRenewal,
         },
@@ -916,7 +946,7 @@ const updateSubscriptionSettings = asyncHandler(async (req, res) => {
   throw new apiError("Invalid action or parameters", 400);
 });
 
-// @desc    Razorpay webhook handler
+// @desc    Razorpay webhook handler - UPDATED WITH NOTIFICATIONS
 // @route   POST /api/subscription/webhook
 // @access  Public (Webhook)
 const handleWebhook = asyncHandler(async (req, res) => {
@@ -985,10 +1015,10 @@ const handleWebhook = asyncHandler(async (req, res) => {
 
   res
     .status(200)
-    .json(new apiResponse(200, true, {}, "Webhook processed successfully"));
+    .json(new apiResponse(200, {}, "Webhook processed successfully"));
 });
 
-// Webhook event handlers - FIXED with proper Payment model usage
+// Webhook event handlers - FIXED with proper Payment model usage and NOTIFICATIONS
 async function handleSubscriptionCharged(payload) {
   try {
     const { subscription: razorpaySubscription, payment } = payload;
@@ -1002,6 +1032,9 @@ async function handleSubscriptionCharged(payload) {
       return;
     }
 
+    // Get user for notifications
+    const user = await User.findById(subscription.user);
+
     // Record successful payment
     subscription.paymentDetails.paymentHistory.push({
       paymentId: payment.id,
@@ -1013,7 +1046,7 @@ async function handleSubscriptionCharged(payload) {
     await subscription.save();
 
     // Create payment record for history - FIXED
-    await createPaymentRecord({
+    const paymentRecord = await createPaymentRecord({
       userId: subscription.user,
       amount: payment.amount / 100,
       status: "completed",
@@ -1033,6 +1066,11 @@ async function handleSubscriptionCharged(payload) {
         subscriptionId: razorpaySubscription.id,
       },
     });
+
+    // AUTO-NOTIFY USER ABOUT SUBSCRIPTION CHARGE
+    if (user && paymentRecord) {
+      await autoNotifyPayment(paymentRecord, user);
+    }
 
     console.log("Subscription charged successfully:", subscription._id);
   } catch (error) {
@@ -1148,6 +1186,17 @@ async function handleSubscriptionActivated(payload) {
     subscription.status = "active";
     await subscription.save();
 
+    // Get user for notifications
+    const user = await User.findById(subscription.user);
+
+    // AUTO-NOTIFY USER ABOUT SUBSCRIPTION ACTIVATION
+    if (user) {
+      await autoNotifySubscriptionCreated(subscription, user, {
+        transactionId: razorpaySubscription.id,
+        amount: subscription.price,
+      });
+    }
+
     console.log("Subscription activated:", subscription._id);
   } catch (error) {
     console.error("Error handling subscription activated:", error);
@@ -1250,6 +1299,9 @@ async function handleInvoicePaid(payload) {
       return;
     }
 
+    // Get user for notifications
+    const user = await User.findById(subscription.user);
+
     // Record successful payment from invoice
     subscription.paymentDetails.paymentHistory.push({
       paymentId: payment.id,
@@ -1259,6 +1311,34 @@ async function handleInvoicePaid(payload) {
     });
     subscription.paymentDetails.lastPaymentDate = new Date();
     await subscription.save();
+
+    // Create payment record
+    const paymentRecord = await createPaymentRecord({
+      userId: subscription.user,
+      amount: invoice.amount / 100,
+      status: "completed",
+      type: "subscription",
+      paymentMethod: "razorpay",
+      transactionId: payment.id,
+      planType: subscription.planType,
+      description: `${subscription.planType} subscription invoice payment`,
+      metadata: {
+        subscriptionId: subscription._id,
+        planType: subscription.planType,
+        duration: subscription.duration,
+        invoiceId: invoice.id,
+      },
+      razorpayDetails: {
+        paymentId: payment.id,
+        invoiceId: invoice.id,
+        subscriptionId: invoice.subscription_id,
+      },
+    });
+
+    // AUTO-NOTIFY USER ABOUT INVOICE PAYMENT
+    if (user && paymentRecord) {
+      await autoNotifyPayment(paymentRecord, user);
+    }
 
     console.log("Invoice paid handled for subscription:", subscription._id);
   } catch (error) {

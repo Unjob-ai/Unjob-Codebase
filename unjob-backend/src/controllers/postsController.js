@@ -4,7 +4,10 @@ import { User } from "../models/UserModel.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
-import notificationService from "../services/notificationService.js";
+import {
+  autoNotifyPostLike,
+  autoNotifyPostComment,
+} from "../utils/notificationHelpers.js";
 
 // @desc    Get all posts with filtering and pagination
 // @route   GET /api/posts
@@ -16,21 +19,29 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
     category,
     subCategory,
     userId,
-    postType = "post",
+    postType = "post", // Default to "post" instead of undefined
     sort = "-createdAt",
   } = req.query;
 
   const skip = (page - 1) * limit;
 
+  // Fixed query construction - removed strict postType filtering
   let query = {
-    postType,
     isActive: true,
     isDeleted: false,
   };
 
+  // Only add postType filter if explicitly provided
+  if (postType && postType !== "all") {
+    query.postType = postType;
+  }
+
+  // Add other filters only if provided
   if (userId) query.author = userId;
   if (category) query.category = category;
   if (subCategory) query.subCategory = subCategory;
+
+  console.log("Post Query:", query); // Debug log
 
   const posts = await Post.find(query)
     .populate("author", "name image role profile")
@@ -41,6 +52,8 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
     .limit(parseInt(limit));
 
   const totalPosts = await Post.countDocuments(query);
+
+  console.log("Found posts:", posts.length, "Total:", totalPosts); // Debug log
 
   // Add user interaction data if user is authenticated
   let postsWithInteractions = posts;
@@ -67,6 +80,7 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
           hasNext: page < Math.ceil(totalPosts / limit),
           hasPrev: page > 1,
         },
+        query: query, // Include query in response for debugging
       },
       "Posts fetched successfully"
     )
@@ -278,7 +292,7 @@ export const deletePost = asyncHandler(async (req, res, next) => {
     .json(new apiResponse(200, true, {}, "Post deleted successfully"));
 });
 
-// @desc    Like/Unlike post
+// @desc    Like/Unlike post - UPDATED with automatic notifications
 // @route   POST /api/posts/:id/like
 // @access  Private
 export const likePost = asyncHandler(async (req, res, next) => {
@@ -318,22 +332,8 @@ export const likePost = asyncHandler(async (req, res, next) => {
     message = "Post liked successfully";
     isLiked = true;
 
-    // Create notification for post like (if not own post)
-    if (post.author._id.toString() !== currentUserId) {
-      try {
-        const postOwner = await User.findById(post.author._id);
-        await notificationService.notifyPostLike(
-          post.author._id,
-          currentUser,
-          post._id,
-          post.title || post.description?.substring(0, 50) || "their post",
-          postOwner
-        );
-      } catch (notificationError) {
-        console.error("Failed to create like notification:", notificationError);
-        // Don't fail the like action if notification fails
-      }
-    }
+    // AUTOMATIC NOTIFICATION - This runs automatically and safely!
+    await autoNotifyPostLike(post, currentUser);
   }
 
   // Update likes count
@@ -361,7 +361,7 @@ export const likePost = asyncHandler(async (req, res, next) => {
   );
 });
 
-// @desc    Add comment to post
+// @desc    Add comment to post - UPDATED with automatic notifications
 // @route   POST /api/posts/:id/comments
 // @access  Private
 export const addComment = asyncHandler(async (req, res, next) => {
@@ -397,24 +397,8 @@ export const addComment = asyncHandler(async (req, res, next) => {
   post.commentsCount = post.comments.length;
   await post.save();
 
-  // Create notification for comment (if not own post)
-  if (post.author._id.toString() !== currentUser._id.toString()) {
-    try {
-      await notificationService.notifyPostComment(
-        post.author._id,
-        currentUser,
-        post._id,
-        post.title || post.description?.substring(0, 50) || "their post",
-        content.trim()
-      );
-    } catch (notificationError) {
-      console.error(
-        "Failed to create comment notification:",
-        notificationError
-      );
-      // Don't fail the comment action if notification fails
-    }
-  }
+  // AUTOMATIC NOTIFICATION - This runs automatically and safely!
+  await autoNotifyPostComment(post, newComment, currentUser);
 
   // Re-populate the post
   const updatedPost = await Post.findById(post._id)

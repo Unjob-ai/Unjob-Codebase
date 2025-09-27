@@ -3,21 +3,65 @@ import axios from "axios";
 
 class EmailService {
   constructor() {
-    this.apiKey = process.env.BREVO_API_KEY;
+    this.apiKey = null;
     this.apiUrl = "https://api.brevo.com/v3/smtp/email";
-    this.fromEmail = process.env.FROM_EMAIL || "shishirshrivastava30@gmail.com";
-    this.fromName = process.env.FROM_NAME || "UNJOB Team";
+    this.fromEmail = null;
+    this.fromName = null;
+    this.initialized = false;
+    this.emailEnabled = false;
 
-    if (!this.apiKey) {
-      console.error("❌ BREVO_API_KEY is required");
-      throw new Error("BREVO_API_KEY is required");
+    // Don't initialize immediately - use lazy initialization
+    console.log("📧 Email service created (will initialize on first use)");
+  }
+
+  // Lazy initialization - only initialize when first needed
+  initializeEmailService() {
+    if (this.initialized) {
+      return this.emailEnabled;
     }
 
-    console.log("📧 Email service initialized with Brevo");
+    try {
+      this.apiKey = process.env.BREVO_API_KEY;
+      this.fromEmail =
+        process.env.FROM_EMAIL || "shishirshrivastava30@gmail.com";
+      this.fromName = process.env.FROM_NAME || "UNJOB Team";
+
+      if (!this.apiKey) {
+        console.warn(
+          "⚠️ BREVO_API_KEY not found. Email service will be disabled."
+        );
+        this.emailEnabled = false;
+        this.initialized = true;
+        return false;
+      }
+
+      this.emailEnabled = true;
+      this.initialized = true;
+      console.log("✅ Email service initialized with Brevo successfully");
+      return true;
+    } catch (error) {
+      console.error("❌ Email service initialization failed:", error);
+      this.emailEnabled = false;
+      this.initialized = true;
+      return false;
+    }
   }
 
   // Main email sending method
   async sendEmail({ to, subject, html, text = null }) {
+    // Initialize service if not already done
+    this.initializeEmailService();
+
+    if (!this.emailEnabled) {
+      console.warn("Email service not available. Skipping email:", subject);
+      return {
+        success: false,
+        error: "Email service not configured",
+        to: Array.isArray(to) ? to : [to],
+        subject,
+      };
+    }
+
     try {
       const payload = {
         sender: {
@@ -392,6 +436,14 @@ The UNJOB Team
 
   // Test email connection
   async testConnection() {
+    // Initialize service first
+    if (!this.initializeEmailService()) {
+      return {
+        success: false,
+        error: "Email service not configured - BREVO_API_KEY missing",
+      };
+    }
+
     try {
       const testResult = await this.sendEmail({
         to: this.fromEmail, // Send test email to yourself

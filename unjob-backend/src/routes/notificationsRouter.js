@@ -1,41 +1,71 @@
-// routes/notifications.js
-import  express from "express"
-import  {
+// routes/notificationsRouter.js
+import express from "express";
+import {
   getNotifications,
   markAsRead,
   markAllAsRead,
-  createNotification,
   deleteNotification,
-  deleteAllNotifications,
-  deleteReadNotifications,
+  deleteNotifications,
   getNotificationStats,
-} from "../controllers/notificationController.js"
+  createNotification,
+  sendTestNotification,
+  triggerCommentNotification,
+  triggerGigInvitationNotification,
+  triggerGigApplicationNotification,
+  triggerSubscriptionNotification,
+  triggerApplicationStatusNotification,
+  triggerProjectSubmissionNotification,
+  triggerProjectReviewNotification,
+  triggerProjectCompletionNotification,
+  triggerPaymentNotification,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from "../controllers/notificationController.js";
+import { authMiddleware, requireAdmin } from "../middleware/authMiddleware.js";
+import {
+  validateObjectId,
+  validateNotification,
+} from "../middleware/validationMiddleWare.js";
 
 const router = express.Router();
 
-// GET /api/notifications - Get user's notifications with pagination
+// Apply authentication to all routes
+router.use(authMiddleware); // ← Fixed function name
+
+// Basic notification routes
 router.get("/", getNotifications);
-
-// GET /api/notifications/stats - Get notification statistics
 router.get("/stats", getNotificationStats);
-
-// POST /api/notifications - Create a new notification (admin/system use)
-router.post("/", createNotification);
-
-// PATCH /api/notifications/:id/read - Mark specific notification as read
-router.patch("/:id/read", markAsRead);
-
-// PATCH /api/notifications/read-all - Mark all notifications as read
+router.post("/", validateNotification, createNotification);
+router.patch("/:id/read", validateObjectId, markAsRead);
 router.patch("/read-all", markAllAsRead);
+router.delete("/:id", validateObjectId, deleteNotification);
+router.delete("/", deleteNotifications); // ← Fixed function name
 
-// DELETE /api/notifications/:id - Delete specific notification
-router.delete("/:id", deleteNotification);
+// Notification preferences
+router.get("/preferences", getNotificationPreferences);
+router.put("/preferences", updateNotificationPreferences);
 
-// DELETE /api/notifications - Delete notifications (with query params)
-// Query params: ?deleteAll=true OR ?deleteRead=true
-router.delete("/", deleteAllNotifications);
+// Test notification (admin only)
+router.post("/test", requireAdmin, sendTestNotification);
 
-// DELETE /api/notifications/read - Delete all read notifications
-router.delete("/read", deleteReadNotifications);
+// Notification triggers for different events
+router.post("/trigger/comment", triggerCommentNotification);
+router.post("/trigger/gig-invitation", triggerGigInvitationNotification);
+router.post("/trigger/gig-application", triggerGigApplicationNotification);
+router.post("/trigger/subscription", triggerSubscriptionNotification);
+router.post(
+  "/trigger/application-status",
+  triggerApplicationStatusNotification
+);
+router.post(
+  "/trigger/project-submission",
+  triggerProjectSubmissionNotification
+);
+router.post("/trigger/project-review", triggerProjectReviewNotification);
+router.post(
+  "/trigger/project-completion",
+  triggerProjectCompletionNotification
+);
+router.post("/trigger/payment", triggerPaymentNotification);
 
 export default router;

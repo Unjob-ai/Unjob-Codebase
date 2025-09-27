@@ -1,4 +1,4 @@
-// controllers/authController.js
+// controllers/authController.js - Updated with automatic notifications
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -7,7 +7,12 @@ import { AppError, catchAsync } from "../middleware/errorHandler.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
-import notificationService from "../services/notificationService.js";
+// Replace old notification service with automatic helpers
+import {
+  autoNotifyWelcome,
+  autoNotifyPasswordReset,
+  autoNotifyEmailVerification,
+} from "../utils/notificationHelpers.js";
 
 // Generate JWT token
 const generateToken = async (userId) => {
@@ -71,7 +76,7 @@ const sendAdminTokenResponse = (admin, statusCode, res, message) => {
   );
 };
 
-// @desc    Register a new user
+// @desc    Register a new user - UPDATED with automatic notifications
 // @route   POST /api/auth/register
 // @access  Public
 const register = asyncHandler(async (req, res) => {
@@ -99,17 +104,9 @@ const register = asyncHandler(async (req, res) => {
     throw new apiError("User registration failed", 500);
   }
 
-  // Send welcome email for email provider users
+  // AUTOMATIC WELCOME EMAIL - Sends both email and in-app notification
   if (provider === "email") {
-    try {
-      await notificationService.sendWelcomeEmail(user.email, {
-        recipientName: user.name,
-      });
-      console.log("✅ Welcome email sent to:", user.email);
-    } catch (error) {
-      console.error("❌ Failed to send welcome email:", error);
-      // Don't fail the registration if email fails
-    }
+    await autoNotifyWelcome(user);
   }
 
   await sendTokenResponse(user, 201, res, "User registered successfully");
@@ -141,7 +138,7 @@ const login = asyncHandler(async (req, res) => {
   await sendTokenResponse(user, 200, res, "Login successful");
 });
 
-// @desc    Google OAuth authentication
+// @desc    Google OAuth authentication - UPDATED with automatic notifications
 // @route   POST /api/auth/google
 // @access  Public
 const googleAuth = asyncHandler(async (req, res) => {
@@ -183,15 +180,8 @@ const googleAuth = asyncHandler(async (req, res) => {
       lastLogin: new Date(),
     });
 
-    // Send welcome email for new Google users
-    try {
-      await notificationService.sendWelcomeEmail(user.email, {
-        recipientName: user.name,
-      });
-      console.log("✅ Welcome email sent to new Google user:", user.email);
-    } catch (error) {
-      console.error("❌ Failed to send welcome email to Google user:", error);
-    }
+    // AUTOMATIC WELCOME EMAIL for new Google users
+    await autoNotifyWelcome(user);
   }
 
   await sendTokenResponse(user, 200, res, "Google authentication successful");
@@ -220,7 +210,7 @@ const getMe = asyncHandler(async (req, res) => {
     );
 });
 
-// @desc    Forgot password
+// @desc    Forgot password - UPDATED with automatic notifications
 // @route   POST /api/auth/forgot-password
 // @access  Public
 const forgotPassword = asyncHandler(async (req, res, next) => {
@@ -245,13 +235,9 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
 
   await user.save({ validateBeforeSave: false });
 
-  // Send password reset email
+  // AUTOMATIC PASSWORD RESET EMAIL - Sends professional email automatically
   try {
-    await notificationService.sendPasswordResetEmail(
-      email,
-      resetToken,
-      user.name
-    );
+    await autoNotifyPasswordReset(user, resetToken);
     console.log("✅ Password reset email sent to:", email);
   } catch (error) {
     // If email fails, clear the reset token
@@ -347,7 +333,7 @@ const changePassword = asyncHandler(async (req, res, next) => {
     .json(new apiResponse(200, true, {}, "Password changed successfully"));
 });
 
-// @desc    Send email verification
+// @desc    Send email verification - UPDATED with automatic notifications
 // @route   POST /api/auth/verify-email
 // @access  Private
 const sendEmailVerification = asyncHandler(async (req, res, next) => {
@@ -360,13 +346,9 @@ const sendEmailVerification = asyncHandler(async (req, res, next) => {
   req.user.verificationToken = verificationToken;
   await req.user.save({ validateBeforeSave: false });
 
-  // Send verification email
+  // AUTOMATIC EMAIL VERIFICATION - Sends professional email automatically
   try {
-    await notificationService.sendEmailVerificationEmail(
-      req.user.email,
-      verificationToken,
-      req.user.name
-    );
+    await autoNotifyEmailVerification(req.user, verificationToken);
     console.log("✅ Email verification sent to:", req.user.email);
   } catch (error) {
     // Clear verification token if email fails
@@ -517,7 +499,7 @@ const initializeAdmin = asyncHandler(async (req, res, next) => {
   sendAdminTokenResponse(admin, 201, res, "Default admin created successfully");
 });
 
-// @desc    Test email functionality (Admin only)
+// @desc    Test email functionality (Admin only) - UPDATED to use new service
 // @route   POST /api/auth/test-email
 // @access  Private (Admin only)
 const testEmail = asyncHandler(async (req, res) => {
@@ -535,31 +517,31 @@ const testEmail = asyncHandler(async (req, res) => {
   let result;
 
   try {
+    // Create a test user object for the test emails
+    const testUser = {
+      _id: "test-user-id",
+      name: "Test User",
+      email: email,
+    };
+
     switch (type) {
-      case "test":
-        result = await notificationService.sendTestEmail(email);
-        break;
       case "welcome":
-        result = await notificationService.sendWelcomeEmail(email, {
-          recipientName: "Test User",
-        });
+        result = await autoNotifyWelcome(testUser);
         break;
       case "reset":
-        result = await notificationService.sendPasswordResetEmail(
-          email,
-          "test-token-123",
-          "Test User"
-        );
+        result = await autoNotifyPasswordReset(testUser, "test-token-123");
         break;
       case "verification":
-        result = await notificationService.sendEmailVerificationEmail(
-          email,
-          "test-verification-token-123",
-          "Test User"
+        result = await autoNotifyEmailVerification(
+          testUser,
+          "test-verification-token-123"
         );
         break;
       default:
-        throw new apiError("Invalid email type", 400);
+        throw new apiError(
+          "Invalid email type. Use: welcome, reset, verification",
+          400
+        );
     }
 
     res
