@@ -9,6 +9,8 @@ import { AppError } from "./errorHandler.js";
 import dotenv from "dotenv";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import apiError from "../utils/apiError.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import { promises } from "dns";
 dotenv.config();
 
 // ---------------- AWS CONFIG ----------------
@@ -132,12 +134,77 @@ const uploadConfigs = {
   mixed: createMulterConfig("mixed", 10, "misc").any(),
   fields: (fields) => createMulterConfig("mixed", 10, "misc").fields(fields),
 };
+const processImages = asyncHandler(async (req, res, next) => {
+  if (!req.files && !req.file) {
+    return next();
+  }
+  console.log(req.file, req.files);
+  const files = req.files || [req.file];
+  const processedFiles = [];
+
+  for (const file of files) {
+    if (file.mimetype.startsWith("image/")) {
+      // Here you could add image processing logic
+      // For example, resizing, compression, etc.
+      processedFiles.push({
+        ...file,
+        processed: true,
+      });
+    } else {
+      processedFiles.push(file);
+    }
+  }
+
+  if (req.files) {
+    req.files = processedFiles;
+  } else {
+    req.file = processedFiles[0];
+  }
+  next();
+});
+const validateFiles = (allowedTypes = [], maxSize = null) => {
+  return asyncHandler(async (req, res, next) => {
+    let files = [];
+      if (!req.files && !req.file) {
+        return next();
+      }
+
+      // Flatten files into an array
+      if (req.files) {
+        files = Object.values(req.files).flat();
+      } else if (req.file) {
+        files = [req.file];
+      }
+
+      for (const file of files) {
+        // Check file type
+        if (allowedTypes.length > 0 && !allowedTypes.includes(file.mimetype)) {
+          throw new apiError(`Invalid file type: ${file.mimetype}`, 400);
+        }
+
+        // Check file size
+        if (maxSize && file.size > maxSize) {
+          throw new apiError(`File too large: ${file.originalname}`, 400);
+        }
+
+        // Check for malicious file names
+        if (
+          file.originalname.includes("..") ||
+          file.originalname.includes("/")
+        ) {
+          throw new apiError("Invalid file name", 400);
+        }
+      }
+
+      next();
+    
+  });
+};
 
 // Utility function to delete a file from AWS S3 bucket by its key
 const deleteFileFromS3 = async (key) => {
   try {
     // Send delete command to S3
-    console.log("delete")
     const response = await s3.send(
       new DeleteObjectCommand({
         Bucket: process.env.S3_BUCKET_NAME,
@@ -157,4 +224,4 @@ const deleteFileFromS3 = async (key) => {
   }
 };
 
-export { uploadConfigs, deleteFileFromS3 };
+export { uploadConfigs, deleteFileFromS3, validateFiles, processImages };

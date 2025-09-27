@@ -45,7 +45,7 @@ const submitProject = asyncHandler(async (req, res, next) => {
   if (req.files && req.files.length > 0) {
     files = req.files.map((file) => ({
       name: file.originalname,
-      url: file.path || file.secure_url,
+      url: `${process.env.CLOUD_FRONT_DOMAIN_NAME}/${file?.key}`|| null,
       type: file.mimetype,
       size: file.size,
     }));

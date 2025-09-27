@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import { User } from "../models/UserModel.js";
-
 // Main authentication middleware
 const authMiddleware = asyncHandler(async (req, res, next) => {
   let token;
@@ -114,22 +113,23 @@ const adminAuthMiddleware = asyncHandler(async (req, res, next) => {
 // Role-based authorization middleware
 const requireRole = (roles) => {
   return asyncHandler(async (req, res, next) => {
-    if (!req.user) {
-      throw new apiError("Authentication required.", 401);
-    }
+      if (!req.user) {
+        throw new apiError("Authentication required.", 401);
+      }
 
-    const userRoles = Array.isArray(roles) ? roles : [roles];
+      const userRoles = Array.isArray(roles) ? roles : [roles];
 
-    if (!userRoles.includes(req.user.role)) {
-      throw new apiError(
-        `Access denied. Required role: ${userRoles.join(" or ")}`,
-        403
-      );
-    }
-
-    next();
+      if (!userRoles.includes(req.user.role)) {
+        throw new apiError(
+          `Access denied. Required role: ${userRoles.join(" or ")}`,
+          403
+        );
+      }
+      next();
+   
   });
 };
+
 
 // Alternative authorization function (for compatibility)
 const authorize = (...roles) => {
