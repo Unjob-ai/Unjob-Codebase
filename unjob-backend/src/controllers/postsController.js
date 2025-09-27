@@ -19,21 +19,29 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
     category,
     subCategory,
     userId,
-    postType = "post",
+    postType = "post", // Default to "post" instead of undefined
     sort = "-createdAt",
   } = req.query;
 
   const skip = (page - 1) * limit;
 
+  // Fixed query construction - removed strict postType filtering
   let query = {
-    postType,
     isActive: true,
     isDeleted: false,
   };
 
+  // Only add postType filter if explicitly provided
+  if (postType && postType !== "all") {
+    query.postType = postType;
+  }
+
+  // Add other filters only if provided
   if (userId) query.author = userId;
   if (category) query.category = category;
   if (subCategory) query.subCategory = subCategory;
+
+  console.log("Post Query:", query); // Debug log
 
   const posts = await Post.find(query)
     .populate("author", "name image role profile")
@@ -44,6 +52,8 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
     .limit(parseInt(limit));
 
   const totalPosts = await Post.countDocuments(query);
+
+  console.log("Found posts:", posts.length, "Total:", totalPosts); // Debug log
 
   // Add user interaction data if user is authenticated
   let postsWithInteractions = posts;
@@ -70,6 +80,7 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
           hasNext: page < Math.ceil(totalPosts / limit),
           hasPrev: page > 1,
         },
+        query: query, // Include query in response for debugging
       },
       "Posts fetched successfully"
     )

@@ -204,13 +204,51 @@ export const createGig = asyncHandler(async (req, res, next) => {
   // Parse form data
   const { data, bannerImage, assetFiles } = await parseRequestData(req);
 
-  // Validate sensitive content
-  const fieldsToCheck = {
-    title: data.title,
-    projectOverview: data.projectOverview,
-    assetDescription: data.assetDescription,
-    deliverables: (data.deliverables || []).join(" "),
-  };
+  // Determine if this is a draft
+  const isDraft = data.status === "draft";
+  const isPartialSave = data.saveType === "partial";
+  const isAutoSave = data.saveType === "auto";
+
+  // FLEXIBLE VALIDATION based on save type
+  if (!isDraft && !isPartialSave && !isAutoSave) {
+    // Full validation for published gigs
+    if (!data.title || !data.category || !data.subcategory) {
+      throw new apiError(
+        "Title, category, and subcategory are required for published gigs",
+        400
+      );
+    }
+
+    if (!data.projectOverview || data.projectOverview.length < 50) {
+      throw new apiError(
+        "Project overview must be at least 50 characters for published gigs",
+        400
+      );
+    }
+
+    if (!data.budget || data.budget < 100) {
+      throw new apiError(
+        "Budget is required and must be at least ₹100 for published gigs",
+        400
+      );
+    }
+  } else {
+    // Minimal validation for drafts/partial saves
+    if (!data.title || data.title.trim().length < 3) {
+      throw new apiError("Title must be at least 3 characters", 400);
+    }
+  }
+
+  // Validate sensitive content only if fields exist
+  const fieldsToCheck = {};
+  if (data.title) fieldsToCheck.title = data.title;
+  if (data.projectOverview)
+    fieldsToCheck.projectOverview = data.projectOverview;
+  if (data.assetDescription)
+    fieldsToCheck.assetDescription = data.assetDescription;
+  if (data.deliverables && data.deliverables.length > 0) {
+    fieldsToCheck.deliverables = data.deliverables.join(" ");
+  }
 
   for (const [fieldName, fieldValue] of Object.entries(fieldsToCheck)) {
     const issue = detectSensitiveInfo(fieldValue);
@@ -222,16 +260,10 @@ export const createGig = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // Validate required fields
-  if (!data.title || !data.category || !data.subcategory) {
-    throw new apiError("Title, category, and subcategory are required", 400);
-  }
-
-  // Check if first gig
+  // Check subscription (same logic as before)
   const existingGigsCount = await Gig.countDocuments({ company: user._id });
   const isFirstGig = existingGigsCount === 0;
 
-  // Subscription validation for non-first gigs
   if (!isFirstGig) {
     const subscription = await Subscription.findOne({
       user: user._id,
@@ -246,7 +278,6 @@ export const createGig = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // Validate subscription status
     const isActiveSubscription = subscription.status === "active";
     const isNotExpired =
       !subscription.endDate || subscription.endDate > new Date();
@@ -258,12 +289,11 @@ export const createGig = asyncHandler(async (req, res, next) => {
       throw new apiError("Your subscription has expired", 402);
     }
 
-    // Check gig limits
     const maxGigs = subscription.maxGigs || 0;
     const gigsPosted = subscription.gigsPosted || 0;
     const canPostGig = maxGigs === -1 || gigsPosted < maxGigs;
 
-    if (!canPostGig) {
+    if (!canPostGig && !isDraft) {
       throw new apiError(
         `You have reached your monthly limit of ${maxGigs} gigs (${gigsPosted}/${maxGigs})`,
         402
@@ -271,35 +301,68 @@ export const createGig = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // Process data
-  const processedTitle = processTitle(data.title);
-  const timelineData = processTimeline(data.timeline);
+  // Process data with fallbacks for drafts
+  const processedTitle = data.title
+    ? processTitle(data.title)
+    : "Untitled Draft";
+  const timelineData = data.timeline
+    ? processTimeline(data.timeline)
+    : { display: "To be determined", days: 0 };
 
-  // Handle file uploads
-  const bannerInfo = await handleBannerImage(bannerImage, user);
-  const assetUrls = await uploadAssetFiles(assetFiles);
+  // Handle file uploads (optional for drafts)
+  let bannerInfo = {
+    bannerImage: null,
+    bannerSource: "none",
+    autoUpdate: false,
+  };
+  let assetUrls = [];
 
-  // Create gig data
+  try {
+    if (bannerImage) {
+      bannerInfo = await handleBannerImage(bannerImage, user);
+    }
+    if (assetFiles && assetFiles.length > 0) {
+      assetUrls = await uploadAssetFiles(assetFiles);
+    }
+  } catch (uploadError) {
+    if (!isDraft) {
+      throw uploadError; // Only fail for published gigs
+    }
+    console.warn(
+      "Upload failed for draft, continuing without files:",
+      uploadError.message
+    );
+  }
+
+  // Determine status
+  let gigStatus = "draft";
+  if (!isDraft && !isPartialSave && !isAutoSave) {
+    gigStatus = "published";
+  }
+
+  // Create gig data with flexible fields
   const gigData = {
     title: processedTitle,
-    category: data.category,
-    subcategory: data.subcategory,
+    category: data.category || "other",
+    subcategory: data.subcategory || "general",
     tags: data.tags || [],
-    description: data.projectOverview,
-    projectOverview: data.projectOverview,
+    description: data.projectOverview || "Draft in progress...",
+    projectOverview: data.projectOverview || "Draft in progress...",
     company: user._id,
-    status: "published",
-    budget: data.budget,
+    status: gigStatus,
+    budget: data.budget || 0,
     budgetType: "fixed",
-    budgetRange: {
-      min: Math.floor(data.budget * 0.8),
-      max: Math.ceil(data.budget * 1.2),
-    },
+    budgetRange: data.budget
+      ? {
+          min: Math.floor(data.budget * 0.8),
+          max: Math.ceil(data.budget * 1.2),
+        }
+      : { min: 0, max: 0 },
     timeline: timelineData.display,
     timelineDays: timelineData.days,
     quantity: data.quantity || 1,
-    StartDate: data.startDate ? new Date(data.startDate) : undefined,
-    EndDate: data.endDate ? new Date(data.endDate) : undefined,
+    StartDate: data.startDate ? new Date(data.startDate) : null,
+    EndDate: data.endDate ? new Date(data.endDate) : null,
     deliverables: data.deliverables || [],
     bannerImage: bannerInfo.bannerImage,
     bannerSource: bannerInfo.bannerSource,
@@ -307,7 +370,8 @@ export const createGig = asyncHandler(async (req, res, next) => {
     uploadAssets: assetUrls,
     DerscribeAssets: data.assetDescription || "Project assets and references",
     skills: data.tags || [],
-    negotiationAllowed: true,
+    negotiationAllowed:
+      data.negotiationAllowed !== undefined ? data.negotiationAllowed : true,
     featured: false,
     paymentStatus: "not_required",
     metadata: {
@@ -316,6 +380,9 @@ export const createGig = asyncHandler(async (req, res, next) => {
       createdWithSubscription: !isFirstGig,
       bannerAutoUpdate: bannerInfo.autoUpdate,
       userProfileImageAtCreation: user.image,
+      saveType: data.saveType || "manual",
+      isDraft: isDraft,
+      lastSaved: new Date(),
     },
   };
 
@@ -329,8 +396,8 @@ export const createGig = asyncHandler(async (req, res, next) => {
     "name image profile.companyName isVerified username"
   );
 
-  // Update subscription usage
-  if (!isFirstGig) {
+  // Update subscription usage only for published gigs
+  if (gigStatus === "published" && !isFirstGig) {
     try {
       await Subscription.findOneAndUpdate(
         { user: user._id, userRole: "hiring", status: "active" },
@@ -340,19 +407,32 @@ export const createGig = asyncHandler(async (req, res, next) => {
     } catch (subscriptionError) {
       console.error("Failed to update subscription usage:", subscriptionError);
     }
-  } else {
+  } else if (isFirstGig && gigStatus === "published") {
     user.hasPostedFirstGig = true;
     await user.save();
   }
 
-  // Response
+  // Response messages based on save type
+  let message = "Gig saved successfully!";
+  if (gigStatus === "published") {
+    message = isFirstGig
+      ? "First gig created and published successfully - no subscription required!"
+      : "Gig created and published successfully!";
+  } else if (isDraft) {
+    message = "Gig saved as draft";
+  } else if (isPartialSave) {
+    message = "Progress saved";
+  } else if (isAutoSave) {
+    message = "Auto-saved";
+  }
+
   const responseData = {
     success: true,
     gigId: gig._id,
-    message: isFirstGig
-      ? "First gig created successfully - no subscription required!"
-      : "Gig created and published successfully!",
+    message: message,
     isFirstGig: isFirstGig,
+    status: gigStatus,
+    saveType: data.saveType || "manual",
     gigDetails: {
       _id: gig._id,
       title: gig.title,
@@ -370,22 +450,11 @@ export const createGig = asyncHandler(async (req, res, next) => {
       autoUpdateBanner: bannerInfo.autoUpdate,
       negotiationAllowed: gig.negotiationAllowed,
       budgetRange: gig.budgetRange,
-    },
-    bannerInfo: {
-      source: bannerInfo.bannerSource,
-      autoUpdate: bannerInfo.autoUpdate,
-      message:
-        bannerInfo.bannerSource === "uploaded"
-          ? "Custom banner image uploaded"
-          : bannerInfo.bannerSource === "profile_fallback"
-          ? "Using profile image as banner (will auto-update when profile image changes)"
-          : "No banner image set",
+      metadata: gig.metadata,
     },
   };
 
-  res
-    .status(201)
-    .json(new apiResponse(201, responseData, "Gig created successfully"));
+  res.status(201).json(new apiResponse(201, responseData, message));
 });
 
 // @desc    Get all gigs with filtering

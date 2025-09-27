@@ -8,7 +8,6 @@ import { deleteFileFromS3 } from "../middleware/uploadToS3Middleware.js";
 import {
   autoNotifyNewFollower,
   autoNotifyWelcome,
-  shouldNotifyUser,
 } from "../utils/notificationHelpers.js";
 
 // @desc    Get current user profile
