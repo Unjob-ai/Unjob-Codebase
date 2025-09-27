@@ -19,16 +19,18 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
     category,
     subCategory,
     userId,
-    postType = "post", // Default to "post" instead of undefined
+    postType = "post",
     sort = "-createdAt",
   } = req.query;
 
   const skip = (page - 1) * limit;
 
-  // Fixed query construction - removed strict postType filtering
+  // Fixed query construction to handle missing isActive/isDeleted fields
   let query = {
-    isActive: true,
-    isDeleted: false,
+    // Include posts where isActive is true OR doesn't exist (undefined)
+    isActive: { $ne: false },
+    // Include posts where isDeleted is false OR doesn't exist (undefined)
+    isDeleted: { $ne: true },
   };
 
   // Only add postType filter if explicitly provided
@@ -41,7 +43,7 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
   if (category) query.category = category;
   if (subCategory) query.subCategory = subCategory;
 
-  console.log("Post Query:", query); // Debug log
+  
 
   const posts = await Post.find(query)
     .populate("author", "name image role profile")
@@ -53,7 +55,7 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
 
   const totalPosts = await Post.countDocuments(query);
 
-  console.log("Found posts:", posts.length, "Total:", totalPosts); // Debug log
+  console.log("Found posts:", posts.length, "Total:", totalPosts);
 
   // Add user interaction data if user is authenticated
   let postsWithInteractions = posts;
@@ -80,7 +82,6 @@ export const getAllPosts = asyncHandler(async (req, res, next) => {
           hasNext: page < Math.ceil(totalPosts / limit),
           hasPrev: page > 1,
         },
-        query: query, // Include query in response for debugging
       },
       "Posts fetched successfully"
     )
